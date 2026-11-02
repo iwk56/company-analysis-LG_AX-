@@ -1,4 +1,4 @@
-"""리포트 저장 테이블 (docs/spec.md 4장). 내 코멘트 테이블은 Phase 8, AI 작성 내용·시세·기사 등은 해당 Phase에서 추가한다.
+"""리포트 저장 테이블 (docs/spec.md 4장). AI 작성 내용·시세·기사 등은 해당 Phase에서 추가한다.
 
 금액은 DART 원문 그대로 원 단위 정수로 저장하고, 억 원 변환은 보여줄 때 한다.
 """
@@ -44,6 +44,7 @@ class Report(Base):
     recent: Mapped["RecentResult | None"] = relationship(cascade="all, delete-orphan", uselist=False)
     results: Mapped[list["CalcResult"]] = relationship(cascade="all, delete-orphan")
     sources: Mapped[list["Source"]] = relationship(cascade="all, delete-orphan", order_by="Source.id")
+    comments: Mapped[list["Comment"]] = relationship(cascade="all, delete-orphan")
 
 
 def _report_fk() -> Mapped[int]:
@@ -123,3 +124,15 @@ class Source(Base):
     label: Mapped[str] = mapped_column(String)
     rcept_no: Mapped[str] = mapped_column(String)
     url: Mapped[str] = mapped_column(String)
+
+
+class Comment(Base):
+    """내 코멘트: 리포트별·섹션별 1개. 섹션 키는 문자열로만 저장해 섹션이 늘어도 테이블을 바꾸지 않는다."""
+    __tablename__ = "comments"
+    __table_args__ = (UniqueConstraint("report_id", "section_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = _report_fk()
+    section_key: Mapped[str] = mapped_column(String)
+    content: Mapped[str] = mapped_column(String)
+    updated_at: Mapped[datetime] = mapped_column(DateTime)

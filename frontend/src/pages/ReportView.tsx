@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { ApiError, getReport } from '../api'
 import type { ReportDetail } from '../api'
 import styles from '../app.module.css'
+import { CommentsProvider } from '../report/comments'
 import { Cashflow, Competitors, CoreCards, Dupont, Header, RecentBox, Ratios, Sources, Trend } from '../report/sections'
 
 export default function ReportPage() {
@@ -27,7 +28,7 @@ function ReportView({ reportId }: { reportId: string }) {
   if (error) return <p className={styles.error}>{error} <Link to="/reports">목록으로</Link></p>
   if (!report) return <p className={styles.muted}>불러오는 중…</p>
   return (
-    <>
+    <CommentsProvider reportId={report.id} initial={report.comments}>
       <Header r={report} />
       <div className={styles.pagebreak}>1페이지 · 한눈에 보기</div>
       <CoreCards r={report} />
@@ -39,6 +40,6 @@ function ReportView({ reportId }: { reportId: string }) {
       <Cashflow r={report} />
       <Competitors r={report} />
       <Sources r={report} />
-    </>
+    </CommentsProvider>
   )
 }

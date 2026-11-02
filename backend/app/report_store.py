@@ -9,7 +9,7 @@ from .calc.models import YearAnalysis, YearFinancials
 from .fin_collect import CompanyFinancials
 from .recent_results import RecentResults
 from .report_build import build_sections, data_as_of, source_rows, won
-from .report_models import CalcResult, Company, FinancialYear, RecentResult, Report, Source
+from .report_models import CalcResult, Comment, Company, FinancialYear, RecentResult, Report, Source
 
 AMOUNT_FIELDS = [f.name for f in fields(YearFinancials) if f.name != "year"]
 
@@ -88,7 +88,32 @@ def get_report(session: Session, report_id: int) -> dict | None:
         "results": {cr.section: cr.content for cr in r.results},
         "sources": [{"kind": s.kind, "year": s.year, "label": s.label, "rcept_no": s.rcept_no, "url": s.url}
                     for s in r.sources],
+        "comments": {c.section_key: {"content": c.content, "updated_at": c.updated_at.isoformat()} for c in r.comments},
     }
+
+
+def set_comment(session: Session, report_id: int, section_key: str, content: str) -> dict | None | bool:
+    """코멘트를 저장·수정한다. 내용이 비어 있으면(공백만 있어도) 삭제한다. 리포트가 없으면 False.
+
+    저장하면 {"content", "updated_at"}, 삭제하면 None을 돌려준다.
+    """
+    if session.get(Report, report_id) is None:
+        return False
+    row = session.scalar(select(Comment).where(Comment.report_id == report_id, Comment.section_key == section_key))
+    text = content.strip()
+    if not text:
+        if row is not None:
+            session.delete(row)
+            session.commit()
+        return None
+    now = datetime.now().replace(microsecond=0)
+    if row is None:
+        row = Comment(report_id=report_id, section_key=section_key, content=text, updated_at=now)
+        session.add(row)
+    else:
+        row.content, row.updated_at = text, now
+    session.commit()
+    return {"content": row.content, "updated_at": row.updated_at.isoformat()}
 
 
 def delete_report(session: Session, report_id: int) -> bool:

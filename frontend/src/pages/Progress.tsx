@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ApiError, getJob } from '../api'
+import { ApiError, getJob, retryJob } from '../api'
 import type { Job } from '../api'
 import styles from '../app.module.css'
 
@@ -12,6 +12,7 @@ export default function Progress() {
   const navigate = useNavigate()
   const [job, setJob] = useState<Job | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [retrying, setRetrying] = useState(false)
 
   useEffect(() => {
     let stopped = false
@@ -39,6 +40,20 @@ export default function Progress() {
     }
   }, [jobId, navigate])
 
+  async function retry() {
+    setRetrying(true)
+    try {
+      const next = await retryJob(jobId)
+      setJob(null)
+      setError(null)
+      navigate(`/jobs/${next.job_id}`, { replace: true })
+    } catch (e) {
+      setError((e as ApiError).message)
+    } finally {
+      setRetrying(false)
+    }
+  }
+
   return (
     <section className={styles.card}>
       <h3>{job ? `${job.corp_name} 리포트 생성` : '리포트 생성'}</h3>
@@ -55,6 +70,14 @@ export default function Progress() {
       {job?.status === 'failed' && job.error && (
         <p className={styles.error}>
           “{job.error.step_label}” 단계에서 실패했습니다: {job.error.message}
+        </p>
+      )}
+      {job?.status === 'failed' && (
+        <p>
+          <button className={styles.primary} disabled={retrying} onClick={() => void retry()}>
+            {retrying ? '다시 시작하는 중…' : '다시 시도'}
+          </button>
+          <span className={styles.sub}> 처음부터 다시 만듭니다 (이미 받은 DART 재무 응답은 저장본을 씁니다). 실패한 리포트는 저장되지 않았습니다.</span>
         </p>
       )}
       {(error || job?.status === 'failed') && <Link to="/">홈으로</Link>}

@@ -12,7 +12,7 @@ from app.calc import analyze
 from app.fin_collect import collect_company, to_year_list
 from app.recent_results import build_recent
 from app.report_build import data_as_of
-from app.report_models import CalcResult, Company, FinancialYear, RecentResult, Report, Source
+from app.report_models import CalcResult, Comment, Company, FinancialYear, RecentResult, Report, Source
 from app.report_store import save_report
 from tests.test_financials import filing
 from tests.test_recent_results import CUR, PRIOR, company as recent_company, interim
@@ -237,3 +237,69 @@ def test_competitor_without_financials_is_excluded_not_fatal(client, monkeypatch
     assert d["competitors"][0]["included"] is False and "데이터 부족" in d["competitors"][0]["excluded_reason"]
     assert [r["corp_name"] for r in d["results"]["comparison"]["rows"]] == ["SK하이닉스"]
     assert d["results"]["comparison"]["excluded"][0]["corp_name"] == "삼성전자"
+
+
+# ───────── Phase 8: 내 코멘트와 다시 시도
+def put_comment(client, rid, key, content):
+    return client.put(f"/api/reports/{rid}/comments/{key}", json={"content": content})
+
+
+def test_comment_save_edit_and_delete_by_empty(client):
+    rid = wait_done(client, create(client)["job_id"])["report_id"]
+    assert client.get(f"/api/reports/{rid}").json()["comments"] == {}
+
+    saved = put_comment(client, rid, "ratios", "  부채비율이 낮아 안정적  ")
+    assert saved.status_code == 200 and saved.json()["comment"]["content"] == "부채비율이 낮아 안정적"
+    assert saved.json()["comment"]["updated_at"]
+    assert client.get(f"/api/reports/{rid}").json()["comments"]["ratios"]["content"] == "부채비율이 낮아 안정적"
+
+    put_comment(client, rid, "ratios", "수정한 내용")  # 같은 섹션은 덮어쓴다 (행이 늘지 않음)
+    put_comment(client, rid, "dupont", "듀퐁 메모")
+    comments = client.get(f"/api/reports/{rid}").json()["comments"]
+    assert set(comments) == {"ratios", "dupont"} and comments["ratios"]["content"] == "수정한 내용"
+
+    deleted = put_comment(client, rid, "ratios", "   ")  # 공백만 있으면 삭제
+    assert deleted.status_code == 200 and deleted.json()["comment"] is None
+    assert set(client.get(f"/api/reports/{rid}").json()["comments"]) == {"dupont"}
+    assert put_comment(client, rid, "ratios", "").status_code == 200  # 없는 코멘트를 비워도 오류 아님
+
+
+def test_comment_length_limit_and_section_key_rules(client):
+    rid = wait_done(client, create(client)["job_id"])["report_id"]
+    assert put_comment(client, rid, "ratios", "가" * 1000).status_code == 200
+    too_long = put_comment(client, rid, "ratios", "가" * 1001)
+    assert too_long.status_code == 400 and "1,000" in too_long.json()["detail"]
+    assert client.get(f"/api/reports/{rid}").json()["comments"]["ratios"]["content"] == "가" * 1000  # 거부되면 기존 내용 유지
+    assert put_comment(client, rid, "Bad-Key", "x").status_code == 400
+    assert put_comment(client, rid, "swot_page3", "나중에 생길 섹션도 키만 맞으면 저장").status_code == 200
+    assert put_comment(client, 999, "ratios", "x").status_code == 404
+
+
+def test_comments_are_per_report_and_deleted_with_report(client):
+    first = wait_done(client, create(client)["job_id"])["report_id"]
+    second = wait_done(client, create(client)["job_id"])["report_id"]
+    put_comment(client, first, "ratios", "첫 리포트 메모")
+    assert client.get(f"/api/reports/{second}").json()["comments"] == {}  # 같은 기업의 다른 리포트와 공유하지 않음
+    client.delete(f"/api/reports/{first}")
+    with db.SessionLocal() as s:
+        assert s.scalar(select(func.count()).select_from(Comment)) == 0
+    assert client.get(f"/api/reports/{second}").status_code == 200
+
+
+def test_retry_failed_job_starts_new_job_with_same_input(client, monkeypatch):
+    monkeypatch.setattr(jobs, "new_fetcher", lambda c: FakeFetcher(empty=True))
+    failed = wait_done(client, create(client)["job_id"])
+    assert failed["status"] == "failed" and counts()["reports"] == 0
+    monkeypatch.setattr(jobs, "new_fetcher", lambda c: FakeFetcher())  # 원인이 사라졌다고 가정
+    retried = client.post(f"/api/reports/jobs/{failed['job_id']}/retry")
+    assert retried.status_code == 202 and retried.json()["job_id"] != failed["job_id"]
+    done = wait_done(client, retried.json()["job_id"])
+    assert done["status"] == "done" and counts()["reports"] == 1
+    detail = client.get(f"/api/reports/{done['report_id']}").json()
+    assert [c["corp_name"] for c in detail["competitors"]] == ["삼성전자"]  # 경쟁사 선택이 그대로 유지됨
+
+
+def test_retry_rejects_unknown_and_non_failed_jobs(client):
+    assert client.post("/api/reports/jobs/nope/retry").status_code == 404
+    done = wait_done(client, create(client)["job_id"])
+    assert client.post(f"/api/reports/jobs/{done['job_id']}/retry").status_code == 400

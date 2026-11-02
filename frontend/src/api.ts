@@ -144,6 +144,11 @@ export interface Comparison {
   rank_rule: string
 }
 
+export interface ReportComment {
+  content: string
+  updated_at: string
+}
+
 export interface ReportDetail {
   id: number
   company: { corp_code: string; corp_name: string; stock_code: string; industry_name: string | null }
@@ -176,6 +181,7 @@ export interface ReportDetail {
     comparison?: Comparison
   }
   sources: { kind: string; year: number; label: string; rcept_no: string; url: string }[]
+  comments: Record<string, ReportComment>
 }
 
 export const searchCompanies = (q: string) =>
@@ -196,3 +202,12 @@ export const listReports = (q?: string) =>
 export const getReport = (id: number) => request<ReportDetail>(`/api/reports/${id}`)
 
 export const deleteReport = (id: number) => request<{ deleted: number }>(`/api/reports/${id}`, { method: 'DELETE' })
+
+export const saveComment = (reportId: number, sectionKey: string, content: string) =>
+  request<{ section_key: string; comment: ReportComment | null }>(`/api/reports/${reportId}/comments/${sectionKey}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+
+export const retryJob = (jobId: string) => request<Job>(`/api/reports/jobs/${jobId}/retry`, { method: 'POST' })

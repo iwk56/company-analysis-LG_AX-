@@ -65,3 +65,11 @@
 .sources { font-size: 0.9rem; padding-left: 18px; }
 
 .targetrow td { background: #fff8ec; font-weight: 600; }
+
+/* 내 코멘트란 */
+.comment { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.commenthead { display: flex; align-items: baseline; gap: 10px; font-size: 0.9rem; margin-bottom: 4px; }
+.commenttext { white-space: pre-wrap; margin: 4px 0; }
+.commentinput { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font: inherit; resize: vertical; }
+.commentfoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; }
+.unsaved { color: var(--warn); }

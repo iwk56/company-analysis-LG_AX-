@@ -10,6 +10,7 @@ import { dateText } from '../format/date'
 import { Num, SignalBadge } from '../ui'
 import { CashflowChart, ComparisonScatter, LineGroupChart, TrendChart } from './charts'
 import YearTable from './YearTable'
+import { SectionCard } from './comments'
 
 const EOK = 1e8
 const yearsOf = (r: ReportDetail) => r.financial_years.map((y) => y.year).sort((a, b) => a - b)
@@ -73,6 +74,7 @@ export function CoreCards({ r }: { r: ReportDetail }) {
   }
   const cfoDelta = relativeChange(amount(fyOf(r, r.base_year), 'cfo'), amount(fyOf(r, r.base_year - 1), 'cfo'))
   return (
+    <>
     <div className={styles.cards}>
       {ppCard('revenue_growth', '매출 성장률', 'revenue_growth', (m) => formatMetric(m, 'change'))}
       {ppCard('operating_margin', '영업이익률', 'operating_margin', (m) => formatMetric(m, 'percent'))}
@@ -80,6 +82,8 @@ export function CoreCards({ r }: { r: ReportDetail }) {
       <Card label="영업현금흐름" value={formatWonCard(amount(fyOf(r, r.base_year), 'cfo'))} signal={sig('operating_cashflow')}
         dir={direction(cfoDelta)} deltaText={cfoDelta === null ? null : formatChange(cfoDelta)} />
     </div>
+    <SectionCard sectionKey="core_cards" />
+    </>
   )
 }
 
@@ -88,10 +92,10 @@ export function RecentBox({ r }: { r: ReportDetail }) {
   const rr = r.recent_results
   if (!rr) {
     return (
-      <section className={styles.card}>
+      <SectionCard sectionKey="recent_results">
         <h3>최근 실적</h3>
         <p className={styles.muted}>{r.recent_reason ?? '아직 제출된 반기·3분기 보고서가 없습니다'}</p>
-      </section>
+      </SectionCard>
     )
   }
   const ch = r.results.recent_changes
@@ -107,7 +111,7 @@ export function RecentBox({ r }: { r: ReportDetail }) {
   ]
   const source = r.sources.find((s) => s.kind === 'interim_report')
   return (
-    <section className={styles.card}>
+    <SectionCard sectionKey="recent_results">
       <h3>최근 실적 <span className={styles.unit}>{rr.year}년 {rr.report_name}보고서 · {rr.basis}재무제표 · 누적</span></h3>
       <p className={styles.tabletitle}>{rr.period_current} vs {rr.period_prior}<span className={styles.unit}>(단위: 억 원, 영업이익률은 %)</span></p>
       <table className={styles.table}>
@@ -120,7 +124,7 @@ export function RecentBox({ r }: { r: ReportDetail }) {
       </table>
       {rr.notes.map((n) => <p key={n} className={styles.footnote}>{n}</p>)}
       {source && <p className={styles.footnote}>출처: <a href={source.url} target="_blank" rel="noreferrer">{source.label}</a></p>}
-    </section>
+    </SectionCard>
   )
 }
 
@@ -134,14 +138,14 @@ export function Trend({ r }: { r: ReportDetail }) {
   })).map((d) => ({ ...d, revenue: Number.isNaN(d.revenue) ? null : d.revenue, margin: Number.isNaN(d.margin) ? null : d.margin }))
   const row = (label: string, field: string) => ({ label, cells: years.map((y) => formatWonTable(amount(fyOf(r, y), field))) })
   return (
-    <section className={styles.card}>
+    <SectionCard sectionKey="trend">
       <h3>실적 추이</h3>
       <TrendChart data={data} />
       <YearTable title="재무 수치" unit="억 원" years={years}
         rows={[row('매출액', 'revenue'), row('영업이익', 'operating_income'), row('당기순이익', 'net_income'),
           row('지배주주 순이익', 'net_income_parent'), row('자산총계', 'total_assets'), row('부채총계', 'total_liabilities'),
           row('자본총계', 'total_equity')]} />
-    </section>
+    </SectionCard>
   )
 }
 
@@ -171,7 +175,7 @@ export function Ratios({ r }: { r: ReportDetail }) {
   const years = yearsOf(r)
   const byFinancialCost = r.interest_basis === '금융비용'
   return (
-    <section className={styles.card}>
+    <SectionCard sectionKey="ratios">
       <h3>재무비율</h3>
       {GROUPS.map((g) => {
         const label = (m: MetricDef) => (m.key === 'interest_coverage' && byFinancialCost ? '이자보상배율(금융비용 기준)' : m.label)
@@ -194,7 +198,7 @@ export function Ratios({ r }: { r: ReportDetail }) {
           </div>
         )
       })}
-    </section>
+    </SectionCard>
   )
 }
 
@@ -209,7 +213,7 @@ export function Dupont({ r }: { r: ReportDetail }) {
   }
   const latest = d(r.base_year)
   return (
-    <section className={styles.card}>
+    <SectionCard sectionKey="dupont">
       <h3>듀퐁 분석 <span className={styles.unit}>ROE = 순이익률 × 총자산회전율 × 재무레버리지</span></h3>
       <YearTable title="ROE 분해" years={years} rows={[
         { label: '순이익률', cells: years.map((y) => formatMetric(d(y)?.metrics.net_margin, 'percent')) },
@@ -219,7 +223,7 @@ export function Dupont({ r }: { r: ReportDetail }) {
         { label: '주된 변화 요인', cells: years.map((y) => reason(y)) },
       ]} footnote={d(years[0])?.metrics.roe?.year_end_only ? '† 평균 대신 기말 값 기준. 주된 변화 요인의 괄호 안은 그 요소의 전년 대비 변화율' : '주된 변화 요인의 괄호 안은 그 요소의 전년 대비 변화율'} />
       <p><b>ROE가 변한 주된 이유 ({r.base_year}):</b> {latest ? reason(r.base_year) : '자료 없음'}</p>
-    </section>
+    </SectionCard>
   )
 }
 
@@ -232,14 +236,14 @@ export function Cashflow({ r }: { r: ReportDetail }) {
   })).map((d) => ({ year: d.year, cfo: Number.isNaN(d.cfo) ? null : d.cfo, cfi: Number.isNaN(d.cfi) ? null : d.cfi, cff: Number.isNaN(d.cff) ? null : d.cff }))
   const row = (label: string, field: string) => ({ label, cells: years.map((y) => formatWonTable(amount(fyOf(r, y), field))) })
   return (
-    <section className={styles.card}>
+    <SectionCard sectionKey="cashflow">
       <h3>현금흐름 패턴</h3>
       <CashflowChart data={data} />
       <YearTable title="현금흐름" unit="억 원" years={years} rows={[
         row('영업활동', 'cfo'), row('투자활동', 'cfi'), row('재무활동', 'cff'),
         { label: '패턴', cells: years.map((y) => r.results.cashflow[String(y)]?.pattern ?? r.results.cashflow[String(y)]?.na_reason ?? '자료 없음') },
       ]} />
-    </section>
+    </SectionCard>
   )
 }
 
@@ -267,15 +271,15 @@ export function Competitors({ r }: { r: ReportDetail }) {
   const comp = r.results.comparison
   if (!comp) {
     return (
-      <section className={styles.card}>
+      <SectionCard sectionKey="competitors">
         <h3>경쟁사 비교</h3>
         <p className={styles.muted}>이 리포트는 경쟁사 없이 만들어졌습니다.</p>
-      </section>
+      </SectionCard>
     )
   }
   const point = (p: { corp_name: string; x: number; y: number }) => ({ corp_name: p.corp_name, x: p.x * 100, y: p.y * 100 })
   return (
-    <section className={styles.card}>
+    <SectionCard sectionKey="competitors">
       <h3>경쟁사 비교 <span className={styles.unit}>({comp.base_year} 사업연도 기준)</span></h3>
       <p><b>{comp.position.text}</b></p>
       <table className={styles.table}>
@@ -315,7 +319,7 @@ export function Competitors({ r }: { r: ReportDetail }) {
             others={comp.scatter.filter((p) => !p.is_target).map(point)} />
         </>
       )}
-    </section>
+    </SectionCard>
   )
 }
 

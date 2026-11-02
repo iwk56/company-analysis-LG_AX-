@@ -1,6 +1,6 @@
 """리포트 생성 작업: 서버 메모리에서 단계별로 진행하고, 끝까지 성공했을 때만 DB에 저장한다.
 
-서버를 다시 켜면 진행 중이던 작업은 사라진다(MVP). 실패 단계 표시는 이 작업 상태에 담기고, 단계별 [다시 시도]는 Phase 8.
+서버를 다시 켜면 진행 중이던 작업은 사라진다(MVP). 실패 단계 표시는 이 작업 상태에 담기고, [다시 시도]는 같은 입력으로 처음부터 다시 만든다(재무 응답은 저장본을 쓴다).
 """
 import asyncio
 import logging
@@ -37,6 +37,8 @@ class Job:
     steps: list[dict] = field(default_factory=lambda: [{"key": k, "label": l, "status": "pending"} for k, l in STEPS])
     report_id: int | None = None
     error: dict | None = None  # {"step": 단계 키, "step_label": 단계 이름, "message": 안내}
+    company: dict = field(default_factory=dict, repr=False)  # 다시 시도할 때 쓰는 입력 (화면 응답에는 넣지 않음)
+    competitors: list = field(default_factory=list, repr=False)
 
     def to_dict(self) -> dict:
         return {"job_id": self.id, "corp_code": self.corp_code, "corp_name": self.corp_name, "status": self.status,
@@ -65,8 +67,13 @@ class JobManager:
     def find_running(self, corp_code: str) -> Job | None:
         return next((j for j in self.jobs.values() if j.corp_code == corp_code and j.status == "running"), None)
 
+    def retry(self, failed: Job) -> Job:
+        """실패한 작업과 같은 입력으로 처음부터 다시 만든다. 이미 같은 기업이 진행 중이면 그 작업을 돌려준다."""
+        return self.find_running(failed.corp_code) or self.start(failed.company, failed.competitors)
+
     def start(self, company: dict, competitors: list[dict]) -> Job:
-        job = Job(id=uuid.uuid4().hex, corp_code=company["corp_code"], corp_name=company["corp_name"])
+        job = Job(id=uuid.uuid4().hex, corp_code=company["corp_code"], corp_name=company["corp_name"],
+                  company=company, competitors=competitors)
         self.jobs[job.id] = job
         for old in [j for j in self.jobs.values() if j.status != "running"][:-MAX_KEPT_JOBS]:
             del self.jobs[old.id]

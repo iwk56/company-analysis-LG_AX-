@@ -42,6 +42,10 @@ export default function Home() {
   }
 
   function pick(company: SearchItem) {
+    if (company.is_financial) {
+      setError('현재 버전은 일반기업만 분석합니다') // 금융업은 선택해도 진행하지 않는다 (spec F1)
+      return
+    }
     navigate('/select-competitors', { state: { company } }) // 다음 화면에서 경쟁사 1~4곳을 고른다
   }
 
@@ -75,7 +79,6 @@ export default function Home() {
                 </span>
                 <button
                   className={styles.primary}
-                  disabled={c.is_financial}
                   onClick={() => pick(c)}
                 >
                   경쟁사 선택

@@ -1,4 +1,6 @@
 """리포트 생성·진행 상태·목록·상세·삭제 API (docs/spec.md F3, F7)."""
+import re
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -16,6 +18,8 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
 MAX_COMPETITORS = 4
+MAX_COMMENT_LENGTH = 1000
+SECTION_KEY = re.compile(r"^[a-z][a-z0-9_]{0,39}$")  # 섹션이 늘어도 키 모양만 맞으면 저장된다
 
 
 class CreateReport(BaseModel):
@@ -74,6 +78,17 @@ async def create_report(body: CreateReport):
     return manager.start(company, competitors).to_dict()
 
 
+@router.post("/jobs/{job_id}/retry", status_code=202)
+async def retry_job(job_id: str):
+    """실패한 생성 작업을 같은 입력으로 처음부터 다시 시작한다."""
+    job = manager.jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="생성 작업을 찾을 수 없습니다 (서버를 다시 켠 경우 사라집니다)")
+    if job.status != "failed":
+        raise HTTPException(status_code=400, detail="실패한 작업만 다시 시도할 수 있습니다")
+    return manager.retry(job).to_dict()
+
+
 @router.get("/jobs/{job_id}")
 def get_job(job_id: str):
     job = manager.jobs.get(job_id)
@@ -94,6 +109,23 @@ def get_report(report_id: int, session: Session = Depends(get_session)):
     if report is None:
         raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다")
     return report
+
+
+class CommentBody(BaseModel):
+    content: str = ""
+
+
+@router.put("/{report_id}/comments/{section_key}")
+def put_comment(report_id: int, section_key: str, body: CommentBody, session: Session = Depends(get_session)):
+    """섹션 코멘트를 저장·수정한다. 빈 내용이면 삭제한다 (spec F6)."""
+    if not SECTION_KEY.match(section_key):
+        raise HTTPException(status_code=400, detail="올바르지 않은 섹션 이름입니다")
+    if len(body.content) > MAX_COMMENT_LENGTH:
+        raise HTTPException(status_code=400, detail=f"코멘트는 {MAX_COMMENT_LENGTH:,}자까지 쓸 수 있습니다")
+    result = report_store.set_comment(session, report_id, section_key, body.content)
+    if result is False:
+        raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다")
+    return {"section_key": section_key, "comment": result}
 
 
 @router.delete("/{report_id}")
