@@ -60,15 +60,21 @@ async def load_listed_corps(client: httpx.AsyncClient) -> list[dict]:
     return corps
 
 
+SPAC_KEYWORDS = ("스팩", "기업인수목적")  # 기업인수목적회사(스팩)는 분석 대상이 아니라 검색 결과에서 뺀다
+
+
 def search_listed(corps: list[dict], query: str, limit: int | None = None) -> list[dict]:
-    """이름이 일치 → 앞부분 일치 → 포함 순으로, 같은 순위면 이름순. (상장폐지 기업 걸러내기는 호출하는 쪽 몫)"""
+    """이름이 일치 → 앞부분 일치 → 포함 순. 같은 순위 안에서는 이름이 짧은 순(삼성전자 같은 대표 기업이 앞에 오도록), 그다음 가나다순.
+
+    이름에 "스팩" 또는 "기업인수목적"이 든 기업은 뺀다. 상장폐지 기업 걸러내기는 호출하는 쪽 몫.
+    """
     q = query.strip().casefold()
     hits = []
     for c in corps:
         name = c["corp_name"].casefold()
-        if q not in name:
+        if q not in name or any(k in name for k in SPAC_KEYWORDS):
             continue
         rank = 0 if name == q else 1 if name.startswith(q) else 2
-        hits.append((rank, c["corp_name"], c))
-    hits.sort(key=lambda h: (h[0], h[1]))
-    return [h[2] for h in hits[:limit]]  # limit=None 이면 전체
+        hits.append((rank, len(name), c["corp_name"], c))
+    hits.sort(key=lambda h: h[:3])
+    return [h[3] for h in hits[:limit]]  # limit=None 이면 전체

@@ -95,16 +95,17 @@ def _patch_fetch(monkeypatch, log, cls_for):
 def test_search_never_makes_more_than_20_dart_calls_and_spaces_them(lookups, monkeypatch):
     import asyncio
     _patch_fetch(monkeypatch, lookups, lambda code: "E")  # 전부 상장폐지라 계속 조회하게 된다
-    listed, _, failed, incomplete = asyncio.run(main._listed_matches(None, _many(50)))
-    assert len(lookups["fetched"]) == 20 and listed == [] and incomplete
+    m = asyncio.run(main._listed_matches(None, _many(50)))
+    assert len(lookups["fetched"]) == 20 and m.listed == [] and m.more_results
     assert lookups["sleeps"] == [0.5] * 19  # 호출 사이마다 0.5초 (첫 호출 앞에는 없음)
 
 
 def test_search_stops_as_soon_as_ten_listed_found(lookups, monkeypatch):
     import asyncio
     _patch_fetch(monkeypatch, lookups, lambda code: "Y")
-    listed, _, _, incomplete = asyncio.run(main._listed_matches(None, _many(50)))
-    assert len(listed) == 10 and len(lookups["fetched"]) == 10 and not incomplete
+    m = asyncio.run(main._listed_matches(None, _many(50)))
+    assert len(m.listed) == 10 and len(lookups["fetched"]) == 10
+    assert m.more_results  # 아직 확인 안 한 후보가 40곳 남아 있다
 
 
 def test_cached_companies_do_not_count_toward_the_limit(lookups, monkeypatch):
@@ -113,9 +114,9 @@ def test_cached_companies_do_not_count_toward_the_limit(lookups, monkeypatch):
     company_cache.save_cache({h["corp_code"]: {"induty_code": "264", "corp_cls": "E", "fetched_at": time.time()}
                               for h in hits[:25]})
     _patch_fetch(monkeypatch, lookups, lambda code: "Y")
-    listed, _, _, incomplete = asyncio.run(main._listed_matches(None, hits))
-    assert lookups["fetched"] == [h["corp_code"] for h in hits[25:]] and len(listed) == 5 and not incomplete
-    assert asyncio.run(main._listed_matches(None, hits))[0]  # 두 번째 검색은 전부 캐시라 호출 0
+    m = asyncio.run(main._listed_matches(None, hits))
+    assert lookups["fetched"] == [h["corp_code"] for h in hits[25:]] and len(m.listed) == 5 and not m.more_results
+    assert asyncio.run(main._listed_matches(None, hits)).listed  # 두 번째 검색은 전부 캐시라 호출 0
     assert len(lookups["fetched"]) == 5
 
 
@@ -123,5 +124,67 @@ def test_search_stops_calling_after_connection_failure(lookups, monkeypatch):
     import asyncio
     from app.dart import DartError
     _patch_fetch(monkeypatch, lookups, lambda code: DartError("network", "x"))
-    _, _, failed, incomplete = asyncio.run(main._listed_matches(None, _many(50)))
-    assert len(lookups["fetched"]) == 1 and failed == 1 and incomplete
+    m = asyncio.run(main._listed_matches(None, _many(50)))
+    assert len(lookups["fetched"]) == 1 and m.lookup_failed == 1 and m.stopped_early
+
+
+def test_exactly_ten_listed_and_nothing_left_has_no_more_results_message(lookups, monkeypatch):
+    import asyncio
+    _patch_fetch(monkeypatch, lookups, lambda code: "Y")
+    m = asyncio.run(main._listed_matches(None, _many(10)))
+    assert len(m.listed) == 10 and not m.more_results
+
+
+def test_remaining_delisted_only_candidates_do_not_trigger_more_results(lookups, monkeypatch):
+    import asyncio
+    hits = _many(14)
+    company_cache.save_cache({h["corp_code"]: {"induty_code": "264", "corp_cls": "Y" if i < 10 else "E",
+                                               "fetched_at": time.time()} for i, h in enumerate(hits)})
+    m = asyncio.run(main._listed_matches(None, hits))
+    assert len(m.listed) == 10 and not m.more_results  # 남은 4곳은 상장폐지로 확인됨
+
+
+# ---------- 응답 형식·정렬·스팩 ----------
+def test_json_responses_declare_utf8_charset(client):
+    ok = client.get("/api/companies/search", params={"q": "삼성"})
+    assert ok.headers["content-type"] == "application/json; charset=utf-8"
+    err = client.get("/api/companies/search", params={"q": "삼"})  # 오류 응답도 같게
+    assert err.status_code == 400 and err.headers["content-type"] == "application/json; charset=utf-8"
+
+
+def test_response_message_when_more_than_ten(tmp_path, monkeypatch):
+    names = [f"가나{i:02d}" for i in range(15)]
+    corps = [{"corp_code": f"k{i}", "corp_name": n, "stock_code": "1"} for i, n in enumerate(names)]
+    monkeypatch.setattr(company_cache, "CACHE_FILE", tmp_path / "cache.json")
+    monkeypatch.setattr(company_cache, "DATA_DIR", tmp_path)
+    company_cache.save_cache({c["corp_code"]: {"induty_code": "264", "corp_cls": "K", "fetched_at": time.time()}
+                              for c in corps})
+
+    async def fake_load(_client):
+        return corps
+
+    monkeypatch.setattr(main, "load_listed_corps", fake_load)
+    body = TestClient(main.app).get("/api/companies/search", params={"q": "가나"}).json()
+    assert body["count"] == 10 and body["message"] == "결과가 많습니다. 더 정확한 이름으로 검색해 주세요"
+
+
+def test_samsung_electronics_comes_before_long_samsung_names(tmp_path, monkeypatch):
+    """'삼성'으로 시작하는 기업이 많아도 가나다순이 아니라 짧은 이름이 앞에 와서 삼성전자가 10개 안에 든다."""
+    others = ["삼성공조", "삼성에스디에스", "삼성바이오로직스", "삼성중공업", "삼성출판사", "삼성화재", "삼성생명",
+              "삼성물산", "삼성전기", "삼성증권", "삼성엔지니어링", "삼성SDI", "삼성제약", "삼성에프엔씨"]
+    names = others + ["삼성전자", "삼성스팩1호", "삼성머스트스팩2호"]
+    corps = [{"corp_code": f"s{i}", "corp_name": n, "stock_code": "1"} for i, n in enumerate(names)]
+    monkeypatch.setattr(company_cache, "CACHE_FILE", tmp_path / "cache.json")
+    monkeypatch.setattr(company_cache, "DATA_DIR", tmp_path)
+    company_cache.save_cache({c["corp_code"]: {"induty_code": "264", "corp_cls": "Y", "fetched_at": time.time()}
+                              for c in corps})
+
+    async def fake_load(_client):
+        return corps
+
+    monkeypatch.setattr(main, "load_listed_corps", fake_load)
+    body = TestClient(main.app).get("/api/companies/search", params={"q": "삼성"}).json()
+    got = [i["corp_name"] for i in body["items"]]
+    assert "삼성전자" in got and not any("스팩" in n for n in got) and len(got) == 10
+    exact = TestClient(main.app).get("/api/companies/search", params={"q": "삼성전자"}).json()
+    assert [i["corp_name"] for i in exact["items"]] == ["삼성전자"] and exact["message"] is None
