@@ -66,7 +66,12 @@ def test_all_live_checks_ok(capsys):
             return httpx.Response(200, json={"status": "000", "corp_name": "삼성전자(주)"})
         if host == "apis.data.go.kr":
             return httpx.Response(200, json={"response": {"header": {"resultCode": "00"}, "body": {}}})
-        if host == "openapi.naver.com":
+        if host == "naverapihub.apigw.ntruss.com":
+            assert request.url.path == "/search/v1/news"
+            assert request.headers["X-NCP-APIGW-API-KEY-ID"] == SECRETS["NAVER_CLIENT_ID"]
+            assert request.headers["X-NCP-APIGW-API-KEY"] == SECRETS["NAVER_CLIENT_SECRET"]
+            assert "X-Naver-Client-Id" not in request.headers  # 예전 헤더는 쓰지 않는다
+            assert request.url.params["display"] == "1"
             return httpx.Response(200, json={"items": []})
         if host == "ecos.bok.or.kr":
             return httpx.Response(200, json={"StatisticSearch": {"list_total_count": 1, "row": []}})
@@ -86,8 +91,11 @@ def test_all_live_checks_ok(capsys):
     (lambda r: httpx.Response(200, json={"status": "010"}), "dart", "실패(키 오류)"),
     (lambda r: httpx.Response(200, json={"status": "020"}), "dart", "실패(한도 초과)"),
     (lambda r: httpx.Response(200, json={"status": "800"}), "dart", "실패(기타)"),
-    (lambda r: httpx.Response(401, json={"errorCode": "024"}), "naver", "실패(키 오류)"),
-    (lambda r: httpx.Response(429, json={"errorCode": "012"}), "naver", "실패(한도 초과)"),
+    (lambda r: httpx.Response(401, json={"error": {"errorCode": "200", "message": "Authentication Failed"}}), "naver", "실패(키 오류)"),
+    (lambda r: httpx.Response(429, json={"error": {"errorCode": "429", "message": "Quota Exceeded"}}), "naver", "실패(한도 초과)"),
+    (lambda r: httpx.Response(403, text="Forbidden"), "naver", "실패(기타)"),
+    (lambda r: httpx.Response(400, json={"errorCode": "SE02", "errorMessage": "Invalid display value"}), "naver", "실패(기타)"),
+    (lambda r: httpx.Response(404, json={"errorCode": "SE05", "errorMessage": "Invalid search api"}), "naver", "실패(기타)"),
     (lambda r: httpx.Response(200, json={"RESULT": {"CODE": "INFO-100"}}), "ecos", "실패(키 오류)"),
     (lambda r: httpx.Response(200, json={"RESULT": {"CODE": "ERROR-602"}}), "ecos", "실패(한도 초과)"),
     (lambda r: httpx.Response(401, json={"error": {}}), "openai", "실패(키 오류)"),
@@ -146,3 +154,12 @@ def test_startup_warnings_name_only_missing_required_keys():
     assert startup_warnings({**SECRETS, "LLM_PROVIDER": "gemini"})[0].startswith("LLM_PROVIDER")
     joined = " ".join(startup_warnings(dict(SECRETS, ECOS_API_KEY="")))
     assert all(value not in joined for value in SECRETS.values())  # 이름만 알리고 값은 다루지 않는다
+
+
+def test_naver_error_code_shown_but_403_is_not_a_key_error(capsys):
+    h = lambda r: httpx.Response(400, json={"errorCode": "SE02", "errorMessage": "Invalid display value"})
+    _, out = run(["--live", "--only", "naver"], SECRETS, h, capsys)
+    assert "HTTP 400, SE02" in status_of(out, "naver")
+    h403 = lambda r: httpx.Response(403, json={"errorCode": "weird code with spaces and secret " + SECRETS["NAVER_CLIENT_SECRET"]})
+    _, out = run(["--live", "--only", "naver"], SECRETS, h403, capsys)
+    assert "실패(기타)" in status_of(out, "naver") and SECRETS["NAVER_CLIENT_SECRET"] not in out

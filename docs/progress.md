@@ -54,6 +54,12 @@
 - AI 서비스: `.env`의 `LLM_PROVIDER`(openai/anthropic, 기본 openai)로 선택, AI 호출은 모듈 하나에 모음. Phase 6의 내가 할 일은 "OpenAI 키를 `.env`에 입력(부서 공유 키, 사용 허락 확인)". 공유 키라 개발 중 AI 호출은 SK하이닉스 1곳만, 같은 리포트의 해석은 다시 만들지 않음 (spec.md 0장 규칙 8·9)
 - 개발 도구 `backend/check_keys.py` 추가 (spec에 없는 개발용 도구): 기본은 키 입력 여부만, `--live`는 키마다 1건 호출, `--only`로 일부만. 서버 시작 시 비어 있는 키 이름만 경고. 테스트는 외부 호출 없이 작성함. **`--live`는 아직 한 번도 실행하지 않음** (DART 차단 중, 각 서비스의 응답 코드 처리는 실호출로 확인 전)
 
+## 네이버 API HUB 전환 (2026-11-02)
+
+- 네이버 검색 API가 NAVER API HUB로 이전됨. `check_keys.py`의 네이버 확인을 새 주소(`/search/v1/news`)·헤더(`X-NCP-APIGW-API-KEY-ID`/`X-NCP-APIGW-API-KEY`)로 바꾸고 spec.md·plan.md·.env.example 반영
+- `check_keys.py --live --only naver` 1회 실행: **정상**. 키 오류·한도 초과 분류는 공식 가이드의 상태 코드 기준이며 실제 오류 응답으로는 확인 못 함
+- 다른 키(`dart`·`data_go_kr`·`ecos`·`openai`)의 `--live`는 아직 실행 전
+
 ## Phase 2 메모
 
 - 재무상태표에 유동/비유동 구분이 없으면 "금융업일 수 있음" 경고를 띄우는 안전장치를 추가한다 (업종코드 기반 금융업 판별을 빠져나간 경우 대비)

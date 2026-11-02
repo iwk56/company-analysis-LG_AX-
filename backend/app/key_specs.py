@@ -16,7 +16,7 @@ class KeySpec:
 KEY_SPECS = (
     KeySpec("dart", "OpenDART", ("DART_API_KEY",)),
     KeySpec("data_go_kr", "공공데이터포털(주식시세)", ("DATA_GO_KR_KEY",)),
-    KeySpec("naver", "네이버 검색(뉴스)", ("NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET")),
+    KeySpec("naver", "NAVER API HUB(뉴스)", ("NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET")),
     KeySpec("ecos", "한국은행 ECOS", ("ECOS_API_KEY",)),
     KeySpec("openai", "OpenAI", ("OPENAI_API_KEY",), provider="openai"),
     KeySpec("anthropic", "Anthropic(Claude)", ("ANTHROPIC_API_KEY",), provider="anthropic"),

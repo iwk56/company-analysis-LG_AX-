@@ -8,6 +8,7 @@
 """
 import argparse
 import os
+import re
 import sys
 import unicodedata
 from dataclasses import dataclass
@@ -108,15 +109,30 @@ def check_data_go_kr(client: httpx.Client, env: Mapping[str, str]) -> Outcome:
     return _other(f"응답 코드 {code}")
 
 
+def _error_code(resp: httpx.Response) -> str:
+    """NAVER API HUB 에러 본문의 코드(예: SE02). 형식이 계층별로 다르다: 검색 API는 평면 {errorCode}, 게이트웨이는 {error:{errorCode}}."""
+    data = _json(resp) or {}
+    code = data.get("errorCode") or (data.get("error") or {}).get("errorCode")
+    return str(code) if code and re.fullmatch(r"[A-Za-z0-9_-]{1,20}", str(code)) else ""
+
+
 def check_naver(client: httpx.Client, env: Mapping[str, str]) -> Outcome:
-    r = _get(client, "https://openapi.naver.com/v1/search/news.json",
+    # NAVER API HUB (구 네이버 검색 API). 기존 openapi.naver.com 주소·X-Naver-* 헤더와 키는 쓸 수 없다.
+    r = _get(client, "https://naverapihub.apigw.ntruss.com/search/v1/news",
              params={"query": "삼성전자", "display": 1},  # 뉴스 1건
-             headers={"X-Naver-Client-Id": env["NAVER_CLIENT_ID"], "X-Naver-Client-Secret": env["NAVER_CLIENT_SECRET"]})
+             headers={"X-NCP-APIGW-API-KEY-ID": env["NAVER_CLIENT_ID"], "X-NCP-APIGW-API-KEY": env["NAVER_CLIENT_SECRET"]})
     if isinstance(r, Outcome):
         return r
     if r.status_code == 200:
         return OK
-    return _by_http_status(r) or _other(f"HTTP {r.status_code}")
+    code = _error_code(r)
+    note = f"HTTP {r.status_code}" + (f", {code}" if code else "")
+    if r.status_code == 401:  # 가이드: 인증 실패 (ID/Secret 누락·오류, 헤더 오류, API 권한 미설정)
+        return Outcome(False, KEY_ERROR, note)
+    if r.status_code == 429:  # 가이드: 하루 허용량 초과
+        return Outcome(False, LIMIT, note)
+    # 403은 키 오류가 아니라 호출 방식 문제(HTTP 사용, 파라미터 누락·인코딩), 300/404는 주소 오류
+    return _other(note)
 
 
 def check_ecos(client: httpx.Client, env: Mapping[str, str]) -> Outcome:
