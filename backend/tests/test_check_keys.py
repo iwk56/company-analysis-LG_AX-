@@ -163,3 +163,22 @@ def test_naver_error_code_shown_but_403_is_not_a_key_error(capsys):
     h403 = lambda r: httpx.Response(403, json={"errorCode": "weird code with spaces and secret " + SECRETS["NAVER_CLIENT_SECRET"]})
     _, out = run(["--live", "--only", "naver"], SECRETS, h403, capsys)
     assert "실패(기타)" in status_of(out, "naver") and SECRETS["NAVER_CLIENT_SECRET"] not in out
+
+
+def test_models_option_prints_model_names_only(capsys):
+    def handler(request):
+        assert request.url.path == "/v1/models"
+        return httpx.Response(200, json={"data": [{"id": "model-b"}, {"id": "model-a"}]})
+
+    code = check_keys.main(["--models"], env={"OPENAI_API_KEY": "sk-secret"}, client=client_for(handler))
+    out = capsys.readouterr().out
+    assert code == 0
+    assert out.split() == ["model-a", "model-b"]
+    assert "sk-secret" not in out
+
+
+def test_models_option_without_key_makes_no_call(capsys):
+    def handler(request):
+        raise AssertionError("호출하면 안 됨")
+
+    assert check_keys.main(["--models"], env={}, client=client_for(handler)) == 1

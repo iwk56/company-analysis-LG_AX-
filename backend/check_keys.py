@@ -3,10 +3,12 @@
     backend/.venv/bin/python check_keys.py                      # .env에 키가 들어 있는지만 확인 (외부 호출 없음)
     backend/.venv/bin/python check_keys.py --live               # 키마다 가장 가벼운 요청 1건씩 보내 작동 확인
     backend/.venv/bin/python check_keys.py --live --only dart,naver
+    backend/.venv/bin/python check_keys.py --models             # OpenAI 키로 쓸 수 있는 모델 이름 목록 (텍스트 생성 없음)
 
 키 값은 어떤 경우에도 출력하지 않는다(실패 사유도 분류 이름만 보여준다).
 """
 import argparse
+import contextlib
 import os
 import re
 import sys
@@ -169,6 +171,18 @@ def check_openai(client: httpx.Client, env: Mapping[str, str]) -> Outcome:
     return _by_http_status(r) or _other(f"HTTP {r.status_code}")
 
 
+def list_openai_models(client: httpx.Client, env: Mapping[str, str]) -> list[str] | Outcome:
+    """OpenAI 모델 목록 조회 1건. 모델 이름만 돌려준다."""
+    r = _get(client, "https://api.openai.com/v1/models",
+             headers={"Authorization": f"Bearer {env['OPENAI_API_KEY']}"})
+    if isinstance(r, Outcome):
+        return r
+    if r.status_code != 200:
+        return _by_http_status(r) or _other(f"HTTP {r.status_code}")
+    data = _json(r) or {}
+    return sorted(str(m.get("id")) for m in data.get("data", []) if isinstance(m, dict) and m.get("id"))
+
+
 LIVE_CHECKS: dict[str, Callable[[httpx.Client, Mapping[str, str]], Outcome]] = {
     "dart": check_dart,
     "data_go_kr": check_data_go_kr,
@@ -232,9 +246,22 @@ def main(argv: list[str] | None = None, env: Mapping[str, str] | None = None,
          client: httpx.Client | None = None) -> int:
     parser = argparse.ArgumentParser(description="API 키 입력 여부와 작동 여부를 확인합니다.")
     parser.add_argument("--live", action="store_true", help="키마다 가장 가벼운 요청 1건을 보내 작동 확인")
+    parser.add_argument("--models", action="store_true", help="OpenAI 키로 쓸 수 있는 모델 이름 목록을 출력 (조회 1건)")
     parser.add_argument("--only", help="확인할 키만 쉼표로 (예: dart,naver)")
     args = parser.parse_args(argv)
     env = os.environ if env is None else env
+
+    if args.models:
+        if not (env.get("OPENAI_API_KEY") or "").strip():
+            print("OPENAI_API_KEY 가 비어 있습니다 — backend/.env 확인")
+            return 1
+        with (httpx.Client() if client is None else contextlib.nullcontext(client)) as c:
+            result = list_openai_models(c, env)
+        if isinstance(result, Outcome):
+            print(f"실패({result.reason}) {result.note}")
+            return 1
+        print("\n".join(result))
+        return 0
 
     only = None
     if args.only:
