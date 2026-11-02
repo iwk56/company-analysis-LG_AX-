@@ -1,10 +1,12 @@
 """공시 확인·AI 작업(6-A): 가짜 AI 응답(고정 예시 JSON)과 만들어 둔 가짜 공시 원문으로 전체 흐름을 확인한다. 외부 호출 없음."""
 import io
+import json
 import zipfile
+from datetime import date
 
 import pytest
 
-from app import ai_tasks, enrich, llm, reports_api
+from app import ai_accounting, ai_tasks, enrich, llm, reports_api
 from app.employees import summarize
 from tests.test_reports import THIS_YEAR, client, create, wait_done  # noqa: F401  (client는 pytest 픽스처)
 
@@ -18,6 +20,16 @@ def para(t):
 
 
 UNIT = row("당기", "(단위 : 백만원)")
+FIX = json.loads((llm.FIXTURE_DIR / "extract_related_party.json").read_text(encoding="utf-8"))
+_SALES = [c.strip() for c in FIX["sales_total"]["quote"].split("|")]  # 실제 사업보고서 표의 행을 그대로 쓴다
+_PURCH = [c.strip() for c in FIX["purchases_total"]["quote"].split("|")]
+_HEAD = [f"회사{i}" for i in range(len(_SALES) - 2)]  # 칸마다 회사명, 값 행은 '매출 등' + 이 칸들 + 합계
+_HEAD[10], _HEAD[27] = "ESSENCORE Limited", "PRISM Energy International Pte. Ltd."
+RELATED_NOTE = (
+    para("31. 특수관계자 및 대규모기업집단 소속회사와 거래 (연결)") + row("당기", "(단위 : 백만원)") + row(*_HEAD) + row(*_SALES) + row(*_PURCH)
+    + row("전기", "(단위 : 백만원)") + row(*_HEAD) + row("매출 등", *["1"] * (len(_SALES) - 2), "9,999")
+    + para("연결회사는 공동기업인 Hystars Semiconductor (Wuxi) Co., Ltd.를 위하여 Wuxi Xinfa Group Co., Ltd. 에게 RMB 701백만의 지급보증을 제공하고 있습니다."))
+
 DOC = (
     "<SECTION-1><TITLE>II. 사업의 내용</TITLE>"
     "<SECTION-2><TITLE>4. 매출 및 수주상황</TITLE>" + para("가. 매출에 관한 사항") + "</SECTION-2>"
@@ -32,14 +44,25 @@ DOC = (
     + para("25. 판매비와관리비 (연결)")
     + para("27. 금융수익 및 금융비용 (연결)") + UNIT + row("이자수익", "494,327") + row("이자비용", "923,703")
     + row("금융비용 소계", "12,504,998") + para("28. 기타영업외수익과 기타영업외비용 (연결)")
-    + "</SECTION-2></SECTION-1>")
+    + RELATED_NOTE
+    + "</SECTION-2></SECTION-1>"
+    "<SECTION-1><TITLE>V. 회계감사인의 감사의견 등</TITLE><SECTION-2><TITLE>1. 외부감사에 관한 사항</TITLE>" + para("가. 회계감사인의 명칭 및 감사의견")
+    + row("사업연도", "구분", "감사인", "감사의견", "의견변형사유", "계속기업 관련중요한 불확실성", "강조사항", "핵심감사사항")
+    + row("제78기(당기)", "감사보고서", "삼정회계법인", "적정의견", "해당사항 없음", "해당사항 없음", "해당사항 없음", "가. (별도재무제표) 기계장치 검토")
+    + para("나. 감사용역 체결현황") + row("제78기(당기)", "삼정회계법인", "3,100") + "</SECTION-2></SECTION-1>")
+
+
+AUDIT_ROW = {"rcept_no": "20260317000635", "bsns_year": "제78기\n(당기)", "adtor": "삼정회계법인", "adt_opinion": "적정의견",
+             "emphs_matter": "해당사항 없음", "core_adt_matter": "가. (연결재무제표) 기계장치의 감가상각개시시점에 대한 적정성 검토", "stlm_dt": "2025-12-31"}
 
 
 @pytest.fixture
 def env(client, monkeypatch):
     """가짜 AI + 가짜 공시 원문 + 가짜 직원 현황. 호출 횟수를 센다."""
     monkeypatch.setenv("LLM_PROVIDER", "fake")
-    calls = {"llm": [], "docs": 0, "emp": 0}
+    calls = {"llm": [], "docs": 0, "emp": 0, "audit": 0, "list": 0}
+    state = {"audit": [AUDIT_ROW], "filings": []}
+    calls["state"] = state
     real_fake = llm._fake
 
     def counting_fake(task):
@@ -60,8 +83,18 @@ def env(client, monkeypatch):
         return {"count": 34549, "avg_tenure_years": 13.4, "avg_salary_won": 185004892, "rcept_no": "R1", "settled_on": f"{year}-12-31",
                 "year": year, "url": "https://dart.fss.or.kr/x"}
 
+    async def fake_audit(_client, corp_code, year, raw_dir=None):
+        calls["audit"] += 1
+        return state["audit"]
+
+    async def fake_corrections(_client, corp_code, start, end):
+        calls["list"] += 1
+        return state["filings"]
+
     monkeypatch.setattr(enrich, "load_document_zip", fake_zip)
     monkeypatch.setattr(enrich, "fetch_employees", fake_emp)
+    monkeypatch.setattr(enrich, "fetch_audit", fake_audit)
+    monkeypatch.setattr(enrich, "fetch_corrections", fake_corrections)
     report_id = wait_done(client, create(client)["job_id"])["report_id"]
     return client, report_id, calls
 
@@ -93,16 +126,17 @@ def test_run_ai_extracts_verifies_and_writes(env):
     assert ov["content"]["bcg"]["segments"][0]["name"] == "DRAM"  # 비중·증감률은 위에서 코드가 계산한 값과 같은 숫자라 통과
     assert ov["content"]["overview"] is None and any("기업 개요" in w for w in ov["warnings"])  # 예시 문장의 매출액 숫자는 이 가짜 리포트와 달라 버려진다
     assert e["extract_segments"]["by"] == "ai" and e["extract_segments"]["model"] == "fake"
-    assert calls["llm"] == ["extract_segments", "extract_rnd", "extract_finance", "write_overview", "write_summaries"]
+    assert calls["llm"] == ["extract_segments", "extract_rnd", "extract_finance", "extract_going_concern", "extract_related_party",
+                            "write_accounting", "write_overview", "write_summaries"]
 
 
 def test_second_run_does_not_call_ai_again(env):
     client, report_id, calls = env
     client.post(f"/api/reports/{report_id}/ai")
-    n_llm, n_docs, n_emp = len(calls["llm"]), calls["docs"], calls["emp"]
+    before = (len(calls["llm"]), calls["docs"], calls["emp"], calls["audit"], calls["list"])
     again = client.post(f"/api/reports/{report_id}/ai")
     assert again.status_code == 200
-    assert (len(calls["llm"]), calls["docs"], calls["emp"]) == (n_llm, n_docs, n_emp)  # 저장본을 그대로 쓴다
+    assert (len(calls["llm"]), calls["docs"], calls["emp"], calls["audit"], calls["list"]) == before  # 저장본을 그대로 쓴다
 
 
 def test_value_not_in_source_is_dropped_not_saved(env, monkeypatch):

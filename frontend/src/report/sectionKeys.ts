@@ -10,6 +10,7 @@ export const SECTION_KEYS = [
   'ratios', // 재무비율
   'dupont', // 듀퐁 분석
   'cashflow', // 현금흐름 패턴
+  'accounting', // 회계 이슈 체크
   'competitors', // 경쟁사 비교
   'macro', // 3페이지 환율·기준금리
   'articles', // 3페이지 최근 기사

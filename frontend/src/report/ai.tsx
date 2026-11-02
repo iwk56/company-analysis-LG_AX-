@@ -37,9 +37,12 @@ export function AiBadge({ task, kind = 'write' }: { task: keyof Enrichments; kin
 
 /** 섹션 맨 위 한 줄 요약 */
 export function Summary({ sectionKey }: { sectionKey: string }) {
-  const text = useContent('write_summaries')?.summaries[sectionKey]
+  const task = sectionKey === 'accounting' ? 'write_accounting' : 'write_summaries'
+  const main = useContent('write_summaries')?.summaries[sectionKey]
+  const accounting = useContent('write_accounting')?.summary
+  const text = task === 'write_accounting' ? accounting : main
   if (!text) return null
-  return <p className={styles.oneline}><AiBadge task="write_summaries" /> {text}</p>
+  return <p className={styles.oneline}><AiBadge task={task} /> {text}</p>
 }
 
 export function NoteButton({ noteKey, open, onToggle }: { noteKey: string; open: boolean; onToggle: () => void }) {
@@ -55,8 +58,8 @@ export function NotePanel({ noteKey }: { noteKey: string }) {
   if (!note) return null
   return (
     <div className={styles.infopanel}>
-      {note.meaning && <p><b>의미</b> <AiBadge task="write_summaries" /> {note.meaning}</p>}
-      {note.why && <p><b>왜 중요한가</b> <AiBadge task="write_summaries" /> {note.why}</p>}
+      {note.meaning && <p><b>의미</b> <AiBadge task={note.task} /> {note.meaning}</p>}
+      {note.why && <p><b>왜 중요한가</b> <AiBadge task={note.task} /> {note.why}</p>}
       <p><b>근거</b> {note.evidence.length === 0 ? '출처 없음' : note.evidence.map((ev) => (
         <a key={ev.url + ev.label} href={ev.url} target="_blank" rel="noreferrer">{ev.label}</a>
       ))}</p>

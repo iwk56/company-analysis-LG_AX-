@@ -36,19 +36,28 @@ export function useNotice(key: keyof Enrichments): { status: 'empty' | 'failed';
 export interface Evidence { label: string; url: string }
 
 /** 주석 ③ 근거: 코드가 저장한 실제 출처 (AI가 쓰지 않는다) */
-export function evidenceFor(r: ReportDetail, key: string): Evidence[] {
+export function evidenceFor(r: ReportDetail, key: string, e?: Enrichments): Evidence[] {
   const annual = r.sources.find((s) => s.kind === 'annual_report' && s.year === r.base_year)
   const interim = r.sources.find((s) => s.kind === 'interim_report')
   const out: Evidence[] = []
   if (key === 'net_vs_operating' && interim) out.push({ label: `${interim.label} · 연결재무제표 주석 (금융수익 및 금융비용)`, url: interim.url })
+  else if (key === 'audit_opinion' || key === 'going_concern') {
+    const url = e?.audit_opinion?.content?.url ?? annual?.url
+    if (url) out.push({ label: `${r.base_year} 사업보고서 · 회계감사인의 감사의견 등`, url })
+  } else if (key === 'corrections') {
+    for (const it of e?.corrections?.content?.items.slice(0, 3) ?? []) out.push({ label: `${it.title} (${it.date})`, url: it.url })
+    if (out.length === 0 && annual) out.push({ label: `${annual.label} (정정 여부는 DART 공시 목록에서 확인)`, url: annual.url })
+  } else if (key === 'related_party' && annual) out.push({ label: `${annual.label} · 재무제표 주석 (특수관계자)`, url: annual.url })
   else if (annual) out.push({ label: key === 'interest_coverage' ? `${annual.label} · 재무제표와 주석 (금융수익 및 금융비용)` : annual.label, url: annual.url })
   return out
 }
 
-export function useNote(key: string): { meaning: string | null; why: string | null; evidence: Evidence[] } | null {
-  const { report } = useAi()
-  const note = useContent('write_summaries')?.notes[key]
+/** 주석 ⓘ 내용. 재무 주석은 write_summaries, 회계 이슈 4개는 write_accounting에 있다. */
+export function useNote(key: string): { meaning: string | null; why: string | null; evidence: Evidence[]; task: 'write_summaries' | 'write_accounting' } | null {
+  const { report, e } = useAi()
+  const main = useContent('write_summaries')?.notes[key]
+  const accounting = useContent('write_accounting')?.notes[key]
+  const note = main ?? accounting
   if (!note) return null
-  return { ...note, evidence: evidenceFor(report, key) }
+  return { ...note, evidence: evidenceFor(report, key, e), task: main ? 'write_summaries' : 'write_accounting' }
 }
-

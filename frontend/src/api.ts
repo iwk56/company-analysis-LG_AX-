@@ -214,7 +214,49 @@ export interface SummariesContent {
   summaries: Record<string, string>
   notes: Record<string, { meaning: string | null; why: string | null }>
 }
+/** 회계 이슈 체크 판정: clear=이상 없음, check=확인 필요, unknown=확인 불가(원문과 대조하지 못함) */
+export type Verdict = 'clear' | 'check' | 'unknown'
+export interface AuditContent {
+  verdict: 'clear' | 'check'
+  opinion: string
+  auditor: string | null
+  fiscal_term: string
+  settled_on: string | null
+  emphasis: string[]
+  key_audit_matters: string[]
+  url: string | null
+}
+export interface CorrectionsContent {
+  verdict: 'clear' | 'check'
+  count: number
+  items: { title: string; date: string; url: string }[]
+  period_start: string
+  period_end: string
+}
+export interface GoingConcernContent { verdict: 'clear' | 'check'; basis: 'emphasis' | 'ai'; quote: string }
+export interface TextAmounts { state: 'none' | 'found' | 'unverified'; items: { party: string | null; amount_text: string }[] }
+export interface RelatedPartyContent {
+  verdict: Verdict
+  threshold: number
+  revenue_won: number | null
+  sales_total_won: number | null
+  sales_ratio: number | null
+  purchases_total_won: number | null
+  purchases_ratio: number | null
+  top: { party: string; kind: string; amount_won: number }[]
+  loans: TextAmounts
+  guarantees: TextAmounts
+}
+export interface AccountingWriteContent {
+  summary: string | null
+  notes: Record<string, { meaning: string | null; why: string | null }>
+}
 export interface Enrichments {
+  audit_opinion?: Enrichment<AuditContent>
+  corrections?: Enrichment<CorrectionsContent>
+  extract_going_concern?: Enrichment<GoingConcernContent>
+  extract_related_party?: Enrichment<RelatedPartyContent>
+  write_accounting?: Enrichment<AccountingWriteContent>
   employees?: Enrichment<EmployeesContent>
   extract_segments?: Enrichment<SegmentsContent>
   extract_rnd?: Enrichment<RndContent>

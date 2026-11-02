@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { ApiError, getReport } from '../api'
 import type { ReportDetail } from '../api'
 import styles from '../app.module.css'
+import { Accounting } from '../report/accounting'
 import { AiBanner, AiProvider } from '../report/ai'
 import { CommentsProvider } from '../report/comments'
 import { Articles, Cashflow, Competitors, CoreCards, Dupont, Header, Macro, Overview, RecentBox, Ratios, Segments, Sources, Trend } from '../report/sections'
@@ -43,6 +44,7 @@ function ReportView({ reportId }: { reportId: string }) {
       <Ratios r={report} />
       <Dupont r={report} />
       <Cashflow r={report} />
+      <Accounting r={report} />
       <Competitors r={report} />
       <div className={styles.pagebreak}>3페이지 · 외부 환경과 관심사항</div>
       <Macro r={report} />
