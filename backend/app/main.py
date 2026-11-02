@@ -1,4 +1,7 @@
 import asyncio
+import logging
+import os
+from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
@@ -8,8 +11,20 @@ from .ksic import industry_name
 from .corp_codes import load_listed_corps, search_listed
 from .dart import DartError
 from .industry import is_financial
+from .key_specs import startup_warnings
 
-app = FastAPI(title="기업분석 리포트 API")
+log = logging.getLogger("uvicorn.error")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # 서버를 켤 때 비어 있는 키 이름만 경고한다 (외부 호출은 하지 않는다)
+    for warning in startup_warnings(os.environ):
+        log.warning(warning)
+    yield
+
+
+app = FastAPI(title="기업분석 리포트 API", lifespan=lifespan)
 
 MIN_QUERY_LENGTH = 2
 MAX_RESULTS = 10
