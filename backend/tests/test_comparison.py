@@ -52,8 +52,8 @@ def test_position_uses_average_comparison_and_debt_ratio_lower_is_better():
                             [entry("B", revenue=100, growth=0.1, margin=0.1, roe=0.1, debt=1.0)])
     pos = comp["position"]
     assert pos["better"] == ["매출액", "영업이익률", "ROE"] and pos["worse"] == ["매출액증가율", "부채비율"]
-    assert pos["text"] == "A: 비교한 5개 중 3개 지표가 평균보다 좋음(매출액, 영업이익률, ROE), 2개는 평균보다 낮음(매출액증가율, 부채비율)."
-    # 표의 ▲▼와 같은 기준: 부채비율 A는 평균보다 높음(above)이지만 '좋음'이 아니다
+    assert pos["text"] == "A: 비교한 5개 지표 중 3개 우위(매출액, 영업이익률, ROE), 2개 열위(매출액증가율, 부채비율)."
+    # 표의 ▲▼와 같은 기준: 부채비율 A는 평균보다 높음(above)이지만 '우위'가 아니다
     assert cell(comp, "A", "debt_ratio")["vs_average"] == "above"
 
 
@@ -61,11 +61,11 @@ def test_position_low_debt_is_better_and_equal_to_average_is_same():
     comp = build_comparison(2025, entry("A", debt=0.5, roe=0.2, target=True), [entry("B", debt=1.5, roe=0.2)])
     pos = comp["position"]
     assert "부채비율" in pos["better"] and "ROE" in pos["same"]
-    assert "평균과 같음(" in pos["text"] and "ROE" in pos["text"].split("평균과 같음(")[1]
+    assert "평균 수준(" in pos["text"] and "ROE" in pos["text"].split("평균 수준(")[1]
 
 
 def test_position_is_independent_of_rank_ties_and_odd_counts():
-    # 3곳 중 2위여도 평균보다 높으면 '좋음' (순위 기준이 아니다)
+    # 3곳 중 2위여도 평균보다 높으면 '우위' (순위 기준이 아니다)
     comp = build_comparison(2025, entry("A", revenue=200, target=True), [entry("B", revenue=1000), entry("C", revenue=10)])
     assert cell(comp, "A", "revenue")["rank"] == 2 and cell(comp, "A", "revenue")["vs_average"] == "below"
     comp = build_comparison(2025, entry("A", revenue=500, target=True), [entry("B", revenue=1000), entry("C", revenue=10)])

@@ -27,8 +27,8 @@ COLUMN_DEFS: tuple[ColumnDef, ...] = (
 )
 
 RANK_RULE = ("순위는 값이 같으면 같은 순위로 매기고, 해당 없음·자료 없음인 기업은 순위와 평균에서 뺍니다. "
-             "위의 한 줄은 순위가 아니라 평균(분석 기업 포함) 대비입니다. 평균보다 좋음은 부채비율을 뺀 지표에서는 평균보다 높은 경우, "
-             "부채비율에서는 평균보다 낮은 경우입니다. 그 반대는 '평균보다 낮음'으로 묶습니다.")
+             "위의 한 줄은 순위가 아니라 평균(분석 기업 포함) 대비입니다. 우위는 부채비율을 뺀 지표에서는 평균보다 높은 경우, "
+             "부채비율에서는 평균보다 낮은 경우이고, 그 반대는 열위, 평균과 같으면 평균 수준입니다.")
 
 
 @dataclass
@@ -72,7 +72,7 @@ def _rank(value: float, all_values: list[float], higher_is_better: bool) -> int:
 
 
 def _position(target: Entry, vs: dict[str, str | None]) -> dict:
-    """업계 내 위치 한 줄: 표의 ▲▼(평균 대비)와 같은 기준. 부채비율은 평균보다 낮아야 '좋음'이다."""
+    """업계 내 위치 한 줄: 표의 ▲▼(평균 대비)와 같은 기준. 부채비율은 평균보다 낮아야 '우위'다."""
     better, worse, same, unavailable = [], [], [], []
     for d in COLUMN_DEFS:
         if not d.ranked or d.higher_is_better is None:
@@ -92,12 +92,12 @@ def _position(target: Entry, vs: dict[str, str | None]) -> dict:
     else:
         parts = []
         if better:
-            parts.append(f"{len(better)}개 지표가 평균보다 좋음({', '.join(better)})")
+            parts.append(f"{len(better)}개 우위({', '.join(better)})")
         if worse:
-            parts.append(f"{len(worse)}개는 평균보다 낮음({', '.join(worse)})")
+            parts.append(f"{len(worse)}개 열위({', '.join(worse)})")
         if same:
-            parts.append(f"{len(same)}개는 평균과 같음({', '.join(same)})")
-        text = f"{target.corp_name}: 비교한 {judged}개 중 " + ", ".join(parts) + "."
+            parts.append(f"{len(same)}개 평균 수준({', '.join(same)})")
+        text = f"{target.corp_name}: 비교한 {judged}개 지표 중 " + ", ".join(parts) + "."
         if unavailable:
             text += f" ({', '.join(unavailable)}는 비교할 수 없음)"
     return {"better": better, "worse": worse, "same": same, "unavailable": unavailable, "text": text}
