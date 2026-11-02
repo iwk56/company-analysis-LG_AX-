@@ -45,6 +45,8 @@ class Report(Base):
     results: Mapped[list["CalcResult"]] = relationship(cascade="all, delete-orphan")
     sources: Mapped[list["Source"]] = relationship(cascade="all, delete-orphan", order_by="Source.id")
     comments: Mapped[list["Comment"]] = relationship(cascade="all, delete-orphan")
+    article_search: Mapped["ArticleSearch | None"] = relationship(cascade="all, delete-orphan", uselist=False)
+    macro_series: Mapped[list["MacroSeries"]] = relationship(cascade="all, delete-orphan", order_by="MacroSeries.id")
 
 
 def _report_fk() -> Mapped[int]:
@@ -136,3 +138,46 @@ class Comment(Base):
     section_key: Mapped[str] = mapped_column(String)
     content: Mapped[str] = mapped_column(String)
     updated_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class ArticleSearch(Base):
+    """원자료: 기사 검색 기록. 행이 없는 리포트는 기사 수집 기능이 생기기 전에 만든 리포트이고, 행은 있는데 기사가 0건이면 '최근 3개월 기사 없음'이다."""
+    __tablename__ = "article_searches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("reports.id", ondelete="CASCADE"), unique=True)
+    query: Mapped[str] = mapped_column(String)
+    collected_at: Mapped[datetime] = mapped_column(DateTime)
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+
+    articles: Mapped[list["Article"]] = relationship(cascade="all, delete-orphan", order_by="Article.id")
+
+
+class Article(Base):
+    """원자료: 기사 제목·요약문·링크·날짜 (최신순으로 넣는다)."""
+    __tablename__ = "articles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    search_id: Mapped[int] = mapped_column(ForeignKey("article_searches.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String)
+    summary: Mapped[str] = mapped_column(String)
+    link: Mapped[str] = mapped_column(String)
+    published_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class MacroSeries(Base):
+    """원자료: 환율·기준금리 시계열(ECOS). 행이 없는 리포트는 수집 기능이 생기기 전에 만든 리포트."""
+    __tablename__ = "macro_series"
+    __table_args__ = (UniqueConstraint("report_id", "key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = _report_fk()
+    key: Mapped[str] = mapped_column(String)  # usd_krw | base_rate
+    label: Mapped[str] = mapped_column(String)
+    unit: Mapped[str] = mapped_column(String)
+    stat_code: Mapped[str] = mapped_column(String)
+    source_url: Mapped[str] = mapped_column(String)
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    points: Mapped[list] = mapped_column(JSON)  # [{"date": "2026-11-02", "value": 1337.2}]

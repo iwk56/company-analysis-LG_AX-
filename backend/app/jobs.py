@@ -6,6 +6,7 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 
 import httpx
 
@@ -13,14 +14,16 @@ from . import db
 from .calc import analyze
 from .comparison import Excluded, build_comparison, build_entry
 from .dart import DartError
+from .ecos import EcosError, fetch_macro
 from .fin_collect import NoFinancialsError, collect_company, to_year_list
 from .fin_fetch import FinancialsFetcher
+from .news import KST, MONTHS, NewsError, fetch_news, months_ago
 from .recent_results import collect_recent
 from .report_store import save_report
 
 log = logging.getLogger("uvicorn.error")
 
-STEPS = (("collect", "재무 수집"), ("recent", "최근 실적 수집"), ("competitors", "경쟁사 재무 수집"), ("calc", "계산"), ("save", "저장"))
+STEPS = (("collect", "재무 수집"), ("recent", "최근 실적 수집"), ("competitors", "경쟁사 재무 수집"), ("news", "기사 수집"), ("macro", "지표 수집"), ("calc", "계산"), ("save", "저장"))
 MAX_KEPT_JOBS = 50
 
 
@@ -103,6 +106,13 @@ class JobManager:
                 begin("competitors")
                 collected = await self._collect_competitors(fetcher, competitors)  # 데이터가 없는 회사는 제외 사유와 함께 돌아온다
                 step["competitors"]["status"] = "done"
+            async with httpx.AsyncClient() as client:  # 네이버·ECOS는 DART와 별개라 DART 잠금 밖에서 부른다
+                begin("news")
+                news = await self._collect_news(client, job.corp_name)
+                step["news"]["status"] = "done"
+                begin("macro")
+                macro = await fetch_macro(client)
+                step["macro"]["status"] = "done"
             begin("calc")
             analysis = analyze(to_year_list(res))
             comparison = self._compare(company, res, analysis, collected)
@@ -111,17 +121,26 @@ class JobManager:
             with db.SessionLocal() as session:
                 try:
                     job.report_id = save_report(session, company, res, analysis, recent, recent_reason,
-                                              competitors=competitors, comparison=comparison)
+                                              competitors=competitors, comparison=comparison,
+                                              news=news, macro=macro)
                 except Exception:
                     session.rollback()
                     raise
             step["save"]["status"] = "done"
             job.status = "done"
-        except (DartError, NoFinancialsError) as e:
+        except (DartError, NoFinancialsError, NewsError, EcosError) as e:
             self._fail(job, current, str(e))
         except Exception:
             log.exception("리포트 생성 중 예상하지 못한 오류 (%s)", job.corp_name)
             self._fail(job, current, "예상하지 못한 오류가 발생했습니다. 서버 로그를 확인해 주세요")
+
+    @staticmethod
+    async def _collect_news(client: httpx.AsyncClient, corp_name: str) -> dict:
+        """회사명 하나로 최근 3개월 기사를 모은다. 0건이어도 단계는 성공이고 화면이 '기사 없음'을 보여준다."""
+        now = datetime.now(KST).replace(tzinfo=None, microsecond=0)
+        articles = await fetch_news(client, corp_name, now.date())
+        return {"query": corp_name, "collected_at": now, "period_start": months_ago(now.date(), MONTHS),
+                "period_end": now.date(), "articles": articles}
 
     @staticmethod
     async def _collect_competitors(fetcher: FinancialsFetcher, competitors: list[dict]) -> list[tuple[dict, object]]:

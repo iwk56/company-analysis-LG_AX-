@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  formatBaseRate,
   formatChange,
+  formatExchangeRate,
   formatMetric,
   formatMultiple,
   formatPercent,
@@ -112,5 +114,20 @@ describe('signalView', () => {
   it('판정이 없으면(첫 연도 등) null', () => {
     expect(signalView(null)).toBeNull()
     expect(signalView('알 수 없음')).toBeNull()
+  })
+})
+
+describe('formatExchangeRate / formatBaseRate', () => {
+  it('환율은 소수 첫째 자리에 쉼표와 "원"', () => {
+    expect(formatExchangeRate(1337.2)).toEqual({ text: '1,337.2원', negative: false, muted: false })
+    expect(formatExchangeRate(1427.45).text).toBe('1,427.5원')
+  })
+  it('기준금리는 소수 둘째 자리 (2.75%가 2.8%로 보이지 않게)', () => {
+    expect(formatBaseRate(2.75).text).toBe('2.75%')
+    expect(formatBaseRate(3).text).toBe('3.00%')
+  })
+  it('값이 없으면 자료 없음', () => {
+    expect(formatExchangeRate(null)).toMatchObject({ text: '자료 없음', muted: true })
+    expect(formatBaseRate(undefined)).toMatchObject({ text: '자료 없음', muted: true })
   })
 })

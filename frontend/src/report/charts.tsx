@@ -5,9 +5,10 @@ import {
 } from 'recharts'
 import styles from '../app.module.css'
 import { paddedDomain } from '../format/domain'
+import { COLORS } from './palette'
 import { formatChange, formatMultiple, formatPercent, formatWonTable } from '../format/number'
+import type { Formatted } from '../format/number'
 
-const COLORS = ['#2456a6', '#d97706', '#1b873f', '#8e44ad']
 const EOK = 1e8
 
 type Row = Record<string, number | string | null>
@@ -131,5 +132,32 @@ export function ComparisonScatter({ target, others, averageX, averageY }: {
       </div>
       <p className={styles.footnote}>점선은 비교 기업 평균(분석 기업 포함)입니다.</p>
     </>
+  )
+}
+
+/** 환율·기준금리 일별 추이 선 차트. 값 표시는 호출하는 쪽이 정한 format 함수를 거친다 */
+export function SeriesChart({ points, name, format, color, step }: {
+  points: { date: string; value: number }[]
+  name: string
+  format: (v: number) => Formatted
+  color: string
+  step?: boolean // 기준금리처럼 바뀐 날에만 값이 달라지는 경우 계단형
+}) {
+  const fmt = (v: unknown) => format(Number(v)).text
+  const values = points.map((p) => p.value)
+  const domain = values.length ? paddedDomain(values, { low: 0.1, high: 0.1 }) : undefined
+  return (
+    <div className={styles.chartbox}>
+      <ResponsiveContainer>
+        <LineChart data={points} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="date" minTickGap={48} tickFormatter={(d: string) => d.slice(0, 7)} />
+          <YAxis tickFormatter={fmt} width={84} domain={domain ?? ['auto', 'auto']} />
+          <Tooltip formatter={(v) => fmt(v)} labelFormatter={(d) => String(d)} />
+          <Line dataKey="value" name={name} stroke={color} strokeWidth={2} dot={false} type={step ? 'stepAfter' : 'monotone'}
+            isAnimationActive={false} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   )
 }

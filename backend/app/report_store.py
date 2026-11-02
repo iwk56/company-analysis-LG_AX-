@@ -1,6 +1,6 @@
 """리포트 저장·조회·삭제. 생성이 끝까지 성공했을 때만 save_report를 부른다(실패한 리포트는 저장하지 않음)."""
 from dataclasses import fields
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,14 +9,17 @@ from .calc.models import YearAnalysis, YearFinancials
 from .fin_collect import CompanyFinancials
 from .recent_results import RecentResults
 from .report_build import build_sections, data_as_of, source_rows, won
-from .report_models import CalcResult, Comment, Company, FinancialYear, RecentResult, Report, Source
+from .report_models import (
+    Article, ArticleSearch, CalcResult, Comment, Company, FinancialYear, MacroSeries, RecentResult, Report, Source,
+)
 
 AMOUNT_FIELDS = [f.name for f in fields(YearFinancials) if f.name != "year"]
 
 
 def save_report(session: Session, company: dict, res: CompanyFinancials, analysis: dict[int, YearAnalysis],
                 recent: RecentResults | None, recent_reason: str | None,
-                competitors: list[dict] | None = None, comparison: dict | None = None) -> int:
+                competitors: list[dict] | None = None, comparison: dict | None = None,
+                news: dict | None = None, macro: list[dict] | None = None) -> int:
     """한 트랜잭션으로 저장한다. 중간에 실패하면 아무것도 남지 않는다."""
     session.merge(Company(corp_code=company["corp_code"], corp_name=company["corp_name"],
                           stock_code=company["stock_code"], industry_code=company["industry_code"],
@@ -50,6 +53,14 @@ def save_report(session: Session, company: dict, res: CompanyFinancials, analysi
         report.results.append(CalcResult(section=name, content=content))
     for s in source_rows(res, recent):
         report.sources.append(Source(**s))
+    if news is not None:  # {"query", "collected_at", "period_start", "period_end", "articles"}
+        report.article_search = ArticleSearch(
+            query=news["query"], collected_at=news["collected_at"], period_start=news["period_start"],
+            period_end=news["period_end"], articles=[Article(**a) for a in news["articles"]])
+    for m in macro or []:
+        report.macro_series.append(MacroSeries(
+            key=m["key"], label=m["label"], unit=m["unit"], stat_code=m["stat_code"], source_url=m["source_url"],
+            period_start=date.fromisoformat(m["start"]), period_end=date.fromisoformat(m["end"]), points=m["points"]))
     session.add(report)
     session.commit()
     return report.id
@@ -88,8 +99,22 @@ def get_report(session: Session, report_id: int) -> dict | None:
         "results": {cr.section: cr.content for cr in r.results},
         "sources": [{"kind": s.kind, "year": s.year, "label": s.label, "rcept_no": s.rcept_no, "url": s.url}
                     for s in r.sources],
+        "articles": _articles_view(r.article_search),
+        "macro": [{"key": m.key, "label": m.label, "unit": m.unit, "stat_code": m.stat_code, "source_url": m.source_url,
+                   "period_start": m.period_start.isoformat(), "period_end": m.period_end.isoformat(), "points": m.points}
+                  for m in r.macro_series] or None,  # None = 수집 기능 이전에 만든 리포트
         "comments": {c.section_key: {"content": c.content, "updated_at": c.updated_at.isoformat()} for c in r.comments},
     }
+
+
+def _articles_view(search: ArticleSearch | None) -> dict | None:
+    """None = 기사 수집 기능 이전에 만든 리포트. 기사가 0건이면 items가 빈 목록."""
+    if search is None:
+        return None
+    return {"query": search.query, "collected_at": search.collected_at.isoformat(),
+            "period_start": search.period_start.isoformat(), "period_end": search.period_end.isoformat(),
+            "items": [{"title": a.title, "summary": a.summary, "link": a.link, "published_at": a.published_at.isoformat()}
+                      for a in search.articles]}
 
 
 def set_comment(session: Session, report_id: int, section_key: str, content: str) -> dict | None | bool:

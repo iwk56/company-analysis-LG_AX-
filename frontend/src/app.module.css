@@ -73,3 +73,8 @@
 .commentinput { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font: inherit; resize: vertical; }
 .commentfoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; }
 .unsaved { color: var(--warn); }
+
+.articles { list-style: none; margin: 8px 0; padding: 0; }
+.articles li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.articles li:last-child { border-bottom: none; }
+.summary { margin: 2px 0 0; color: var(--sub); font-size: 0.85rem; }

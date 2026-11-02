@@ -144,6 +144,31 @@ export interface Comparison {
   rank_rule: string
 }
 
+export interface ArticleItem {
+  title: string
+  summary: string
+  link: string
+  published_at: string
+}
+/** null = 기사 수집 기능이 생기기 전에 만든 리포트, items가 비면 최근 3개월 기사 없음 */
+export interface ArticleList {
+  query: string
+  collected_at: string
+  period_start: string
+  period_end: string
+  items: ArticleItem[]
+}
+export interface MacroSeries {
+  key: 'usd_krw' | 'base_rate' | string
+  label: string
+  unit: string
+  stat_code: string
+  source_url: string
+  period_start: string
+  period_end: string
+  points: { date: string; value: number }[]
+}
+
 export interface ReportComment {
   content: string
   updated_at: string
@@ -181,6 +206,8 @@ export interface ReportDetail {
     comparison?: Comparison
   }
   sources: { kind: string; year: number; label: string; rcept_no: string; url: string }[]
+  articles: ArticleList | null
+  macro: MacroSeries[] | null
   comments: Record<string, ReportComment>
 }
 

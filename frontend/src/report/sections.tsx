@@ -1,14 +1,15 @@
 import styles from '../app.module.css'
-import type { ComparisonCell, ComparisonColumn, FinancialYear, MetricMap, ReportDetail } from '../api'
+import type { ComparisonCell, ComparisonColumn, FinancialYear, MacroSeries, MetricMap, ReportDetail } from '../api'
 import { ARROW, difference, direction, relativeChange } from '../format/delta'
 import type { Direction } from '../format/delta'
 import type { Formatted, MetricKind } from '../format/number'
 import {
-  formatChange, formatMetric, formatPercent, formatPercentPoint, formatWonCard, formatWonTable, noData,
+  formatBaseRate, formatChange, formatExchangeRate, formatMetric, formatPercent, formatPercentPoint, formatWonCard, formatWonTable, noData,
 } from '../format/number'
 import { dateText } from '../format/date'
 import { Num, SignalBadge } from '../ui'
-import { CashflowChart, ComparisonScatter, LineGroupChart, TrendChart } from './charts'
+import { CashflowChart, ComparisonScatter, LineGroupChart, SeriesChart, TrendChart } from './charts'
+import { COLORS } from './palette'
 import YearTable from './YearTable'
 import { SectionCard } from './comments'
 
@@ -336,5 +337,75 @@ export function Sources({ r }: { r: ReportDetail }) {
         ))}
       </ul>
     </section>
+  )
+}
+
+// ───────────────────────── 3페이지: 환율·기준금리
+const MACRO_VIEW: Record<string, { format: (v: number) => Formatted; color: string; step: boolean }> = {
+  usd_krw: { format: formatExchangeRate, color: COLORS[0], step: false },
+  base_rate: { format: formatBaseRate, color: COLORS[1], step: true },
+}
+
+function MacroChart({ series }: { series: MacroSeries }) {
+  const view = MACRO_VIEW[series.key] ?? { format: (v: number) => noData(String(v)), color: COLORS[0], step: false }
+  const last = series.points.at(-1)
+  return (
+    <>
+      <h4 className={styles.tabletitle}>{series.label}</h4>
+      {last ? (
+        <>
+          <p className={styles.sub}>최근 값 <b><Num f={view.format(last.value)} /></b> ({last.date}) · 조회 기간 {series.period_start} ~ {series.period_end}</p>
+          <SeriesChart points={series.points} name={series.label} format={view.format} color={view.color} step={view.step} />
+        </>
+      ) : (
+        <p className={styles.muted}>조회 기간({series.period_start} ~ {series.period_end})에 자료가 없습니다.</p>
+      )}
+      <p className={styles.footnote}>
+        출처: <a href={series.source_url} target="_blank" rel="noreferrer">한국은행 ECOS</a> (통계표 {series.stat_code})
+      </p>
+    </>
+  )
+}
+
+export function Macro({ r }: { r: ReportDetail }) {
+  return (
+    <SectionCard sectionKey="macro">
+      <h3>환율·기준금리 <span className={styles.unit}>(최근 1년)</span></h3>
+      {r.macro === null ? (
+        <p className={styles.muted}>이 리포트는 환율·금리 수집 기능이 생기기 전에 만들어져 자료가 없습니다. 리포트를 다시 만들면 표시됩니다.</p>
+      ) : (
+        r.macro.map((s) => <MacroChart key={s.key} series={s} />)
+      )}
+    </SectionCard>
+  )
+}
+
+// ───────────────────────── 3페이지: 최근 기사
+export function Articles({ r }: { r: ReportDetail }) {
+  const a = r.articles
+  return (
+    <SectionCard sectionKey="articles">
+      <h3>최근 기사 {a && <span className={styles.unit}>({a.period_start} ~ {a.period_end}, 최대 30건)</span>}</h3>
+      {a === null ? (
+        <p className={styles.muted}>이 리포트는 기사 수집 기능이 생기기 전에 만들어져 자료가 없습니다. 리포트를 다시 만들면 표시됩니다.</p>
+      ) : a.items.length === 0 ? (
+        <p className={styles.muted}>최근 3개월 기사 없음</p>
+      ) : (
+        <>
+          <ul className={styles.articles}>
+            {a.items.map((it) => (
+              <li key={it.link}>
+                <a href={it.link} target="_blank" rel="noreferrer">{it.title}</a>
+                <span className={styles.sub}> {dateText(it.published_at)}</span>
+                {it.summary && <p className={styles.summary}>{it.summary}</p>}
+              </li>
+            ))}
+          </ul>
+          <p className={styles.footnote}>
+            출처: NAVER API HUB 뉴스 검색 (검색어 “{a.query}”, 수집일 {dateText(a.collected_at)}). 제목·요약문·링크·날짜만 제공되며 본문 전체는 받지 않습니다.
+          </p>
+        </>
+      )}
+    </SectionCard>
   )
 }

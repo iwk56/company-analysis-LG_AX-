@@ -4,7 +4,7 @@ import { ApiError, getReport } from '../api'
 import type { ReportDetail } from '../api'
 import styles from '../app.module.css'
 import { CommentsProvider } from '../report/comments'
-import { Cashflow, Competitors, CoreCards, Dupont, Header, RecentBox, Ratios, Sources, Trend } from '../report/sections'
+import { Articles, Cashflow, Competitors, CoreCards, Dupont, Header, Macro, RecentBox, Ratios, Sources, Trend } from '../report/sections'
 
 export default function ReportPage() {
   const { reportId = '' } = useParams()
@@ -39,6 +39,9 @@ function ReportView({ reportId }: { reportId: string }) {
       <Dupont r={report} />
       <Cashflow r={report} />
       <Competitors r={report} />
+      <div className={styles.pagebreak}>3페이지 · 외부 환경과 관심사항</div>
+      <Macro r={report} />
+      <Articles r={report} />
       <Sources r={report} />
     </CommentsProvider>
   )

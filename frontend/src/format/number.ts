@@ -70,6 +70,18 @@ export function formatPercent(ratio: number | null | undefined): Formatted {
   return build(ratio * 100, 1, '%', false)
 }
 
+/** 환율: 1,337.2원 (원/달러, 소수 첫째 자리) */
+export function formatExchangeRate(won: number | null | undefined): Formatted {
+  if (!usable(won)) return noData()
+  return build(won, 1, '원', false)
+}
+
+/** 기준금리: 2.75% (0.25%p 단위로 움직이므로 소수 둘째 자리. 저장값은 이미 % 단위) */
+export function formatBaseRate(percent: number | null | undefined): Formatted {
+  if (!usable(percent)) return noData()
+  return build(percent, 2, '%', false)
+}
+
 /** 증감률: +230.8% / −26.6% */
 export function formatChange(ratio: number | null | undefined): Formatted {
   if (!usable(ratio)) return noData()
