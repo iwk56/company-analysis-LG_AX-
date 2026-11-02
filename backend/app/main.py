@@ -4,6 +4,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Query
 
 from . import company_cache
+from .ksic import industry_name
 from .corp_codes import load_listed_corps, search_listed
 from .dart import DartError
 from .industry import is_financial
@@ -68,9 +69,9 @@ async def search_companies(q: str = Query(..., description="기업명 (2글자 �
             "corp_name": c["corp_name"],
             "stock_code": c["stock_code"],
             "industry_code": codes[c["corp_code"]],
-            # KSIC 대응표 파일이 준비되기 전까지는 업종명 없이 코드만 보여준다
-            "industry_name": None,
-            "industry_label": codes[c["corp_code"]],
+            "industry_name": industry_name(codes[c["corp_code"]]),
+            # 업종명을 못 찾으면(표에 없는 코드 등) 코드를 그대로 보여준다
+            "industry_label": industry_name(codes[c["corp_code"]]) or codes[c["corp_code"]],
             "is_financial": is_financial(c["corp_code"], codes[c["corp_code"]]),
         }
         for c in corps
