@@ -61,3 +61,67 @@ def test_short_query_and_no_result(client):
     assert r.status_code == 400 and "2글자" in r.json()["detail"]
     body = client.get("/api/companies/search", params={"q": "없는회사"}).json()
     assert body["items"] == [] and "일치하는 기업이 없습니다" in body["message"]
+
+
+# ---------- DART 호출 상한·간격 (실제 호출 없이 fetch를 가짜로 바꿔 센다) ----------
+def _many(n):
+    return [{"corp_code": f"c{i:03d}", "corp_name": f"테스트{i:03d}", "stock_code": "1"} for i in range(n)]
+
+
+@pytest.fixture
+def lookups(tmp_path, monkeypatch):
+    monkeypatch.setattr(company_cache, "CACHE_FILE", tmp_path / "cache.json")
+    monkeypatch.setattr(company_cache, "DATA_DIR", tmp_path)
+    log = {"fetched": [], "sleeps": []}
+
+    async def fake_sleep(sec):
+        log["sleeps"].append(sec)
+
+    monkeypatch.setattr(main, "_sleep", fake_sleep)
+    return log
+
+
+def _patch_fetch(monkeypatch, log, cls_for):
+    async def fake_fetch(_client, code):
+        log["fetched"].append(code)
+        result = cls_for(code)
+        if isinstance(result, Exception):
+            raise result
+        return {"induty_code": "264", "corp_cls": result, "fetched_at": time.time()}
+
+    monkeypatch.setattr(company_cache, "fetch_overview", fake_fetch)
+
+
+def test_search_never_makes_more_than_20_dart_calls_and_spaces_them(lookups, monkeypatch):
+    import asyncio
+    _patch_fetch(monkeypatch, lookups, lambda code: "E")  # 전부 상장폐지라 계속 조회하게 된다
+    listed, _, failed, incomplete = asyncio.run(main._listed_matches(None, _many(50)))
+    assert len(lookups["fetched"]) == 20 and listed == [] and incomplete
+    assert lookups["sleeps"] == [0.5] * 19  # 호출 사이마다 0.5초 (첫 호출 앞에는 없음)
+
+
+def test_search_stops_as_soon_as_ten_listed_found(lookups, monkeypatch):
+    import asyncio
+    _patch_fetch(monkeypatch, lookups, lambda code: "Y")
+    listed, _, _, incomplete = asyncio.run(main._listed_matches(None, _many(50)))
+    assert len(listed) == 10 and len(lookups["fetched"]) == 10 and not incomplete
+
+
+def test_cached_companies_do_not_count_toward_the_limit(lookups, monkeypatch):
+    import asyncio
+    hits = _many(30)
+    company_cache.save_cache({h["corp_code"]: {"induty_code": "264", "corp_cls": "E", "fetched_at": time.time()}
+                              for h in hits[:25]})
+    _patch_fetch(monkeypatch, lookups, lambda code: "Y")
+    listed, _, _, incomplete = asyncio.run(main._listed_matches(None, hits))
+    assert lookups["fetched"] == [h["corp_code"] for h in hits[25:]] and len(listed) == 5 and not incomplete
+    assert asyncio.run(main._listed_matches(None, hits))[0]  # 두 번째 검색은 전부 캐시라 호출 0
+    assert len(lookups["fetched"]) == 5
+
+
+def test_search_stops_calling_after_connection_failure(lookups, monkeypatch):
+    import asyncio
+    from app.dart import DartError
+    _patch_fetch(monkeypatch, lookups, lambda code: DartError("network", "x"))
+    _, _, failed, incomplete = asyncio.run(main._listed_matches(None, _many(50)))
+    assert len(lookups["fetched"]) == 1 and failed == 1 and incomplete
