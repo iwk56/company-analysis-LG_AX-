@@ -18,3 +18,13 @@ node_modules/
 
 # macOS
 .DS_Store
+
+# 편집기 설정
+.vscode/
+
+# 백엔드 로컬 데이터 (고유번호 파일, 개황 캐시)
+backend/data/
+
+# 파이썬 캐시
+__pycache__/
+.pytest_cache/
