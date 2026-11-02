@@ -161,3 +161,23 @@ export function SeriesChart({ points, name, format, color, step }: {
     </div>
   )
 }
+
+/** 사업부문(품목)별 매출 비중 가로 막대. share는 퍼센트 단위(×100) */
+export function SegmentChart({ data }: { data: { name: string; share: number }[] }) {
+  const pctText = (v: unknown) => formatPercent(Number(v) / 100).text
+  return (
+    <div className={styles.chartbox} style={{ height: Math.max(120, data.length * 52 + 30) }}>
+      <ResponsiveContainer>
+        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 56, left: 8, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+          <XAxis type="number" domain={[0, 100]} tickFormatter={pctText} />
+          <YAxis type="category" dataKey="name" width={110} />
+          <Tooltip formatter={(v) => pctText(v)} />
+          <Bar dataKey="share" name="매출 비중" fill={COLORS[0]} isAnimationActive={false}>
+            <LabelList dataKey="share" position="right" formatter={(v: unknown) => pctText(v)} />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}

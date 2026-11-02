@@ -61,8 +61,12 @@ def client(tmp_path, monkeypatch):
     async def fake_macro(_client, today=None):  # ECOS를 부르지 않는다
         return []
 
+    async def fake_enrich(report_id, lock):  # 공시 원문·AI는 부르지 않는다 (해당 테스트는 test_enrich.py)
+        return None
+
     monkeypatch.setattr(jobs, "fetch_news", fake_news)
     monkeypatch.setattr(jobs, "fetch_macro", fake_macro)
+    monkeypatch.setattr(jobs, "enrich_report", fake_enrich)
     jobs.manager.jobs.clear()
     with TestClient(main.app) as c:  # with 문: 백그라운드 작업이 요청 사이에도 같은 이벤트 루프에서 돈다
         yield c
@@ -93,10 +97,10 @@ def counts():
 
 def test_create_list_detail_delete_flow(client):
     started = create(client)
-    assert [s["key"] for s in started["steps"]] == ["collect", "recent", "competitors", "news", "macro", "calc", "save"]
+    assert [s["key"] for s in started["steps"]] == ["collect", "recent", "competitors", "news", "macro", "calc", "save", "ai"]
     job = wait_done(client, started["job_id"])
     assert job["status"] == "done" and job["error"] is None
-    assert [s["status"] for s in job["steps"]] == ["done"] * 7
+    assert [s["status"] for s in job["steps"]] == ["done"] * 8
 
     listing = client.get("/api/reports").json()
     assert listing["count"] == 1
@@ -161,7 +165,7 @@ def test_failed_collect_shows_failed_step_and_saves_nothing(client, monkeypatch)
     job = wait_done(client, create(client)["job_id"])
     assert job["status"] == "failed" and job["report_id"] is None
     assert job["error"]["step"] == "collect" and job["error"]["step_label"] == "재무 수집" and job["error"]["message"]
-    assert [s["status"] for s in job["steps"]] == ["failed"] + ["pending"] * 6
+    assert [s["status"] for s in job["steps"]] == ["failed"] + ["pending"] * 7
     assert counts()["reports"] == 0
 
 

@@ -2,6 +2,8 @@
 // 섹션을 추가할 때(예: 3·4페이지): ① 여기에 키를 더하고 ② 화면에서 <SectionCard sectionKey="새_키">로 감싼다.
 // 백엔드는 키 모양(영소문자·숫자·밑줄)만 확인하므로 서버·DB는 바꾸지 않는다.
 export const SECTION_KEYS = [
+  'overview', // 1페이지 기업 개요
+  'segments', // 1페이지 사업부문 비중
   'core_cards', // 1페이지 핵심 지표 카드
   'recent_results', // 2페이지 최근 실적
   'trend', // 실적 추이

@@ -211,8 +211,12 @@ def patch_external(monkeypatch, articles=None, points=None):
         return [{"key": k, "label": k, "unit": u, "stat_code": "S", "source_url": "https://ecos.bok.or.kr",
                  "start": "2025-11-02", "end": "2026-11-02", "points": points or []} for k, u in (("usd_krw", "원"), ("base_rate", "%"))]
 
+    async def fake_enrich(report_id, lock):
+        return None
+
     monkeypatch.setattr(jobs, "fetch_news", fake_news)
     monkeypatch.setattr(jobs, "fetch_macro", fake_macro)
+    monkeypatch.setattr(jobs, "enrich_report", fake_enrich)
     return seen
 
 
@@ -220,7 +224,7 @@ def test_report_saves_articles_and_macro(api, monkeypatch):
     arts = [{"title": "기사 A", "summary": "요약 A", "link": "http://a/1", "published_at": datetime(2026, 11, 1, 9, 0)}]
     seen = patch_external(monkeypatch, arts, [{"date": "2026-11-02", "value": 1337.2}])
     job = create_and_wait(api)
-    assert job["status"] == "done" and [s["status"] for s in job["steps"]] == ["done"] * 7
+    assert job["status"] == "done" and [s["status"] for s in job["steps"]] == ["done"] * 8
     assert seen["query"] == "SK하이닉스"  # 회사명 하나로 검색
     d = api.get(f"/api/reports/{job['report_id']}").json()
     assert d["articles"]["query"] == "SK하이닉스" and d["articles"]["items"] == [

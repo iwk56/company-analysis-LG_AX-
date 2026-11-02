@@ -103,6 +103,8 @@ def get_report(session: Session, report_id: int) -> dict | None:
         "macro": [{"key": m.key, "label": m.label, "unit": m.unit, "stat_code": m.stat_code, "source_url": m.source_url,
                    "period_start": m.period_start.isoformat(), "period_end": m.period_end.isoformat(), "points": m.points}
                   for m in r.macro_series] or None,  # None = 수집 기능 이전에 만든 리포트
+        "enrichments": {e.key: {"status": e.status, "by": e.by, "model": e.model, "content": e.content, "message": e.message,
+                                "warnings": e.warnings, "created_at": e.created_at.isoformat()} for e in r.enrichments},
         "comments": {c.section_key: {"content": c.content, "updated_at": c.updated_at.isoformat()} for c in r.comments},
     }
 

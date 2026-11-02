@@ -64,6 +64,24 @@ export function formatWonTable(won: number | null | undefined): Formatted {
   return build(won / WON_PER_EOK, 0, '', false)
 }
 
+/** 평균 급여: 만 원 단위, 정수. 18,500만 원 */
+export function formatWonMan(won: number | null | undefined): Formatted {
+  if (!usable(won)) return noData()
+  return build(won / 1e4, 0, '만 원', false)
+}
+
+/** 사람 수: 34,549명 */
+export function formatPeople(n: number | null | undefined): Formatted {
+  if (!usable(n)) return noData()
+  return build(n, 0, '명', false)
+}
+
+/** 근속연수: 13.4년 */
+export function formatYears(n: number | null | undefined): Formatted {
+  if (!usable(n)) return noData()
+  return build(n, 1, '년', false)
+}
+
 /** 비율: 28.9% */
 export function formatPercent(ratio: number | null | undefined): Formatted {
   if (!usable(ratio)) return noData()

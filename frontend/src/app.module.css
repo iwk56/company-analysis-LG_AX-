@@ -78,3 +78,20 @@
 .articles li { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .articles li:last-child { border-bottom: none; }
 .summary { margin: 2px 0 0; color: var(--sub); font-size: 0.85rem; }
+
+/* AI 해석·추출 (Phase 6) */
+.aibadge { display: inline-block; font-size: 0.7rem; font-weight: 600; color: #5b3d9a; background: #efe9fb; border-radius: 4px; padding: 1px 6px; vertical-align: middle; white-space: nowrap; }
+.oneline { margin: 4px 0 10px; font-size: 0.95rem; }
+.infobtn { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0 2px; font-size: 0.95rem; line-height: 1; }
+.infopanel { background: #f7f5fc; border: 1px solid #e3dbf5; border-radius: 6px; padding: 8px 12px; margin: 6px 0; font-size: 0.88rem; text-align: left; font-weight: 400; }
+.infopanel p { margin: 4px 0; }
+.infopanel a { margin-left: 6px; }
+.notecell { padding: 0 !important; }
+.explain { background: #f7f5fc; border: 1px solid #e3dbf5; border-radius: 6px; padding: 8px 12px; margin: 10px 0; font-size: 0.92rem; }
+.explain p { margin: 4px 0; }
+.explain ul { margin: 4px 0; padding-left: 20px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 12px 0 4px; }
+.fact { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.fact .label { color: var(--sub); font-size: 0.85rem; }
+.factvalue { font-size: 1.2rem; font-weight: 700; margin: 2px 0; font-variant-numeric: tabular-nums; }
+.fakebadge { display: inline-block; font-size: 0.7rem; font-weight: 700; color: #fff; background: #c2410c; border-radius: 4px; padding: 1px 6px; margin-left: 4px; vertical-align: middle; white-space: nowrap; }

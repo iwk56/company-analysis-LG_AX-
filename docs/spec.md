@@ -59,7 +59,7 @@
 | 주가·시가총액 | 금융위원회 주식시세정보(공공데이터포털) | PER·PBR, 시가총액 순위, 1년 주가 흐름 차트 | 최근 1년 일별 시세 필요. 6장 확인 필요 1·4 |
 | AI 해석·추출 | OpenAI API 또는 Claude API (`LLM_PROVIDER`로 선택, 기본 OpenAI) | 요약·주석·PEST·SWOT·과제·기여 제안, 비중·연구개발비 추출 등 | 호출은 한 모듈에 모음 (0장 규칙 8) |
 
-모든 API 키는 백엔드 `.env`에 둔다. (`DART_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `ECOS_API_KEY`, `DATA_GO_KR_KEY`, `LLM_PROVIDER`, `OPENAI_API_KEY`, 선택 항목 `ANTHROPIC_API_KEY`)
+모든 API 키는 백엔드 `.env`에 둔다. (`DART_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `ECOS_API_KEY`, `DATA_GO_KR_KEY`, `LLM_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_MODEL_EXTRACT`(추출용 소형), `OPENAI_MODEL_WRITE`(해석용 중간급), 선택 항목 `ANTHROPIC_API_KEY`). 개발용: `LLM_PROVIDER=fake`(외부 호출 없이 고정 예시 응답), `LLM_ALLOW_LIVE=1`이 있어야만 실제 OpenAI 호출이 나간다(공유 키 보호)
 
 ---
 

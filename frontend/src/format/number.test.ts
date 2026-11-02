@@ -7,8 +7,11 @@ import {
   formatMultiple,
   formatPercent,
   formatPercentPoint,
+  formatPeople,
   formatWonCard,
+  formatWonMan,
   formatWonTable,
+  formatYears,
   signalView,
 } from './number'
 
@@ -129,5 +132,16 @@ describe('formatExchangeRate / formatBaseRate', () => {
   it('값이 없으면 자료 없음', () => {
     expect(formatExchangeRate(null)).toMatchObject({ text: '자료 없음', muted: true })
     expect(formatBaseRate(undefined)).toMatchObject({ text: '자료 없음', muted: true })
+  })
+})
+
+describe('직원 현황 표시', () => {
+  it('평균 급여는 만 원 단위 정수', () => {
+    expect(formatWonMan(185_004_892).text).toBe('18,500만 원')
+    expect(formatWonMan(null)).toEqual({ text: '자료 없음', negative: false, muted: true })
+  })
+  it('직원 수와 근속연수', () => {
+    expect(formatPeople(34549).text).toBe('34,549명')
+    expect(formatYears(13.4).text).toBe('13.4년')
   })
 })

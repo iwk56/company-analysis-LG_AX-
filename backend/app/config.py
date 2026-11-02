@@ -32,3 +32,28 @@ def get_ecos_api_key() -> str:
     if not key:
         raise RuntimeError("backend/.env 에 ECOS_API_KEY 가 없습니다.")
     return key
+
+
+def get_llm_provider() -> str:
+    return os.environ.get("LLM_PROVIDER", "").strip().lower() or "openai"
+
+
+def get_llm_model(kind: str) -> str:
+    """kind: 'extract'(추출용 소형) | 'write'(해석용 중간급). 모델 이름은 코드에 고정하지 않고 .env에서 읽는다."""
+    name = "OPENAI_MODEL_EXTRACT" if kind == "extract" else "OPENAI_MODEL_WRITE"
+    model = os.environ.get(name, "").strip()
+    if not model:
+        raise RuntimeError(f"backend/.env 에 {name} 이 없습니다.")
+    return model
+
+
+def get_openai_api_key() -> str:
+    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("backend/.env 에 OPENAI_API_KEY 가 없습니다.")
+    return key
+
+
+def live_ai_allowed() -> bool:
+    """실제 AI 호출 허용 스위치. 부서 공유 키라 개발 중에는 꺼 두고, 허락받은 확인 때만 LLM_ALLOW_LIVE=1로 켠다."""
+    return os.environ.get("LLM_ALLOW_LIVE", "").strip() == "1"

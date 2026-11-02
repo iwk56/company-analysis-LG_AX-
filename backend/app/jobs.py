@@ -15,6 +15,7 @@ from .calc import analyze
 from .comparison import Excluded, build_comparison, build_entry
 from .dart import DartError
 from .ecos import EcosError, fetch_macro
+from .enrich import enrich_report
 from .fin_collect import NoFinancialsError, collect_company, to_year_list
 from .fin_fetch import FinancialsFetcher
 from .news import KST, MONTHS, NewsError, fetch_news, months_ago
@@ -23,7 +24,7 @@ from .report_store import save_report
 
 log = logging.getLogger("uvicorn.error")
 
-STEPS = (("collect", "재무 수집"), ("recent", "최근 실적 수집"), ("competitors", "경쟁사 재무 수집"), ("news", "기사 수집"), ("macro", "지표 수집"), ("calc", "계산"), ("save", "저장"))
+STEPS = (("collect", "재무 수집"), ("recent", "최근 실적 수집"), ("competitors", "경쟁사 재무 수집"), ("news", "기사 수집"), ("macro", "지표 수집"), ("calc", "계산"), ("save", "저장"), ("ai", "공시 확인·AI 해석"))
 MAX_KEPT_JOBS = 50
 
 
@@ -60,7 +61,7 @@ class JobManager:
         self._lock: asyncio.Lock | None = None
         self._lock_loop = None
 
-    def _dart_lock(self) -> asyncio.Lock:
+    def dart_lock(self) -> asyncio.Lock:
         """DART 호출 구간은 한 번에 한 작업만 (동시·대량 호출로 막힌 적이 있어 겹치지 않게 한다)."""
         loop = asyncio.get_running_loop()
         if self._lock is None or self._lock_loop is not loop:
@@ -95,7 +96,7 @@ class JobManager:
             step[key]["status"] = "running"
 
         try:
-            async with httpx.AsyncClient() as client, self._dart_lock():
+            async with httpx.AsyncClient() as client, self.dart_lock():
                 fetcher = new_fetcher(client)
                 begin("collect")
                 res = await collect_company(fetcher, job.corp_code)
@@ -127,12 +128,22 @@ class JobManager:
                     session.rollback()
                     raise
             step["save"]["status"] = "done"
+            begin("ai")
+            await self._enrich(job)
+            step["ai"]["status"] = "done"
             job.status = "done"
         except (DartError, NoFinancialsError, NewsError, EcosError) as e:
             self._fail(job, current, str(e))
         except Exception:
             log.exception("리포트 생성 중 예상하지 못한 오류 (%s)", job.corp_name)
             self._fail(job, current, "예상하지 못한 오류가 발생했습니다. 서버 로그를 확인해 주세요")
+
+    async def _enrich(self, job: Job) -> None:
+        """공시 확인·AI 해석. 작업별 실패는 결과 행에 남고 리포트는 그대로 쓸 수 있다(화면에서 [다시 시도]). 예상 못 한 오류도 리포트를 막지 않는다."""
+        try:
+            await enrich_report(job.report_id, self.dart_lock())
+        except Exception:
+            log.exception("공시 확인·AI 해석 중 예상하지 못한 오류 (%s)", job.corp_name)
 
     @staticmethod
     async def _collect_news(client: httpx.AsyncClient, corp_name: str) -> dict:

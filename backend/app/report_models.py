@@ -47,6 +47,7 @@ class Report(Base):
     comments: Mapped[list["Comment"]] = relationship(cascade="all, delete-orphan")
     article_search: Mapped["ArticleSearch | None"] = relationship(cascade="all, delete-orphan", uselist=False)
     macro_series: Mapped[list["MacroSeries"]] = relationship(cascade="all, delete-orphan", order_by="MacroSeries.id")
+    enrichments: Mapped[list["Enrichment"]] = relationship(cascade="all, delete-orphan", order_by="Enrichment.id")
 
 
 def _report_fk() -> Mapped[int]:
@@ -181,3 +182,25 @@ class MacroSeries(Base):
     period_start: Mapped[date] = mapped_column(Date)
     period_end: Mapped[date] = mapped_column(Date)
     points: Mapped[list] = mapped_column(JSON)  # [{"date": "2026-11-02", "value": 1337.2}]
+
+
+class Enrichment(Base):
+    """공시 확인·AI 작업 결과: 작업 키(employees, extract_*, write_*)마다 1행. 한 번 만든 해석은 다시 만들지 않고 저장본을 쓴다.
+
+    status: ok | empty(원문에 자료 없음·검증 못 함) | failed(다시 시도 가능). by: code | ai.
+    """
+    __tablename__ = "enrichments"
+    __table_args__ = (UniqueConstraint("report_id", "key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = _report_fk()
+    key: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String)
+    by: Mapped[str] = mapped_column(String)
+    model: Mapped[str | None] = mapped_column(String)
+    content: Mapped[dict | None] = mapped_column(JSON)
+    message: Mapped[str | None] = mapped_column(String)
+    warnings: Mapped[list] = mapped_column(JSON, default=list)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime)

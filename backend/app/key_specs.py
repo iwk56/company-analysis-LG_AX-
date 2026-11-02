@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from typing import Mapping
 
-PROVIDERS = ("openai", "anthropic")
+PROVIDERS = ("openai", "anthropic", "fake")  # fake = 외부 호출 없이 고정 예시 응답을 쓰는 개발용
 
 
 @dataclass(frozen=True)

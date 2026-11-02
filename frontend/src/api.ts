@@ -174,6 +174,55 @@ export interface ReportComment {
   updated_at: string
 }
 
+/** 공시 확인·AI 작업 결과 한 건. status: ok | empty(원문에 자료 없음·검증 못 함) | failed(다시 시도 가능) */
+export interface Enrichment<T = unknown> {
+  status: 'ok' | 'empty' | 'failed'
+  by: 'code' | 'ai'
+  model: string | null
+  content: T | null
+  message: string | null
+  warnings: string[]
+  created_at: string
+}
+export interface EmployeesContent {
+  count: number
+  avg_tenure_years: number | null
+  avg_salary_won: number | null
+  year: number
+  url: string | null
+}
+export interface SegmentProduct { name: string; current_won: number; prior_won: number | null; share: number | null; growth: number | null }
+export interface SegmentsContent { year: number; products: SegmentProduct[]; overseas_share: number | null }
+export interface RndContent { amount_won: number; ratio_to_revenue: number | null }
+export interface FinanceContent {
+  interest_expense_won: number | null
+  coverage_actual: number | null
+  net_vs_operating: {
+    period_label: string
+    kind: 'interim' | 'annual'
+    rcept_no: string | null
+    net_income_parent: number
+    operating_income: number
+    items: { label: string; amount_won: number }[]
+  } | null
+}
+export interface OverviewContent {
+  overview: string | null
+  bcg: { summary: string | null; segments: { name: string; comment: string }[] } | null
+}
+export interface SummariesContent {
+  summaries: Record<string, string>
+  notes: Record<string, { meaning: string | null; why: string | null }>
+}
+export interface Enrichments {
+  employees?: Enrichment<EmployeesContent>
+  extract_segments?: Enrichment<SegmentsContent>
+  extract_rnd?: Enrichment<RndContent>
+  extract_finance?: Enrichment<FinanceContent>
+  write_overview?: Enrichment<OverviewContent>
+  write_summaries?: Enrichment<SummariesContent>
+}
+
 export interface ReportDetail {
   id: number
   company: { corp_code: string; corp_name: string; stock_code: string; industry_name: string | null }
@@ -208,6 +257,7 @@ export interface ReportDetail {
   sources: { kind: string; year: number; label: string; rcept_no: string; url: string }[]
   articles: ArticleList | null
   macro: MacroSeries[] | null
+  enrichments: Enrichments
   comments: Record<string, ReportComment>
 }
 
@@ -238,3 +288,6 @@ export const saveComment = (reportId: number, sectionKey: string, content: strin
   })
 
 export const retryJob = (jobId: string) => request<Job>(`/api/reports/jobs/${jobId}/retry`, { method: 'POST' })
+
+/** 공시 확인·AI 작업 중 아직 없거나 실패한 것만 실행한다 (이미 만든 해석은 다시 만들지 않는다) */
+export const runAi = (reportId: number) => request<{ enrichments: Enrichments }>(`/api/reports/${reportId}/ai`, { method: 'POST' })

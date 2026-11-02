@@ -3,8 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 import { ApiError, getReport } from '../api'
 import type { ReportDetail } from '../api'
 import styles from '../app.module.css'
+import { AiBanner, AiProvider } from '../report/ai'
 import { CommentsProvider } from '../report/comments'
-import { Articles, Cashflow, Competitors, CoreCards, Dupont, Header, Macro, RecentBox, Ratios, Sources, Trend } from '../report/sections'
+import { Articles, Cashflow, Competitors, CoreCards, Dupont, Header, Macro, Overview, RecentBox, Ratios, Segments, Sources, Trend } from '../report/sections'
 
 export default function ReportPage() {
   const { reportId = '' } = useParams()
@@ -29,9 +30,13 @@ function ReportView({ reportId }: { reportId: string }) {
   if (!report) return <p className={styles.muted}>불러오는 중…</p>
   return (
     <CommentsProvider reportId={report.id} initial={report.comments}>
+     <AiProvider report={report}>
       <Header r={report} />
+      <AiBanner />
       <div className={styles.pagebreak}>1페이지 · 한눈에 보기</div>
+      <Overview r={report} />
       <CoreCards r={report} />
+      <Segments r={report} />
       <div className={styles.pagebreak}>2페이지 · 재무 건전성</div>
       <RecentBox r={report} />
       <Trend r={report} />
@@ -43,6 +48,7 @@ function ReportView({ reportId }: { reportId: string }) {
       <Macro r={report} />
       <Articles r={report} />
       <Sources r={report} />
+     </AiProvider>
     </CommentsProvider>
   )
 }

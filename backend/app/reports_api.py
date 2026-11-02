@@ -7,12 +7,14 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from . import company_cache, report_store
+from .enrich import AlreadyRunning, enrich_report
 from .corp_codes import load_listed_corps
 from .dart import DartError
 from .db import get_session
 from .industry import is_financial
 from .jobs import manager
 from .ksic import industry_name
+from .report_models import Report
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -126,6 +128,19 @@ def put_comment(report_id: int, section_key: str, body: CommentBody, session: Se
     if result is False:
         raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다")
     return {"section_key": section_key, "comment": result}
+
+
+@router.post("/{report_id}/ai")
+async def run_ai(report_id: int, session: Session = Depends(get_session)):
+    """공시 확인·AI 작업 중 아직 없거나 실패한 것만 실행한다 (이미 만든 해석은 다시 만들지 않는다). 끝나면 결과 전체를 돌려준다."""
+    if session.get(Report, report_id) is None:
+        raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다")
+    try:
+        await enrich_report(report_id, manager.dart_lock())
+    except AlreadyRunning:
+        raise HTTPException(status_code=409, detail="이 리포트의 AI 해석을 이미 만드는 중입니다. 잠시 뒤 다시 확인해 주세요")
+    session.expire_all()
+    return {"enrichments": report_store.get_report(session, report_id)["enrichments"]}
 
 
 @router.delete("/{report_id}")
