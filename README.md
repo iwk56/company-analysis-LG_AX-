@@ -1,6 +1,6 @@
 # 기업분석 리포트 툴 (가칭)
 
-상장 일반기업 1곳을 입력하면 공시·재무 데이터, 기사, 경제 지표를 모아 3페이지 분량의 기업분석 리포트를 만들고 저장해 주는 개인용 도구.
+상장 일반기업 1곳을 입력하면 공시·재무 데이터, 기사, 경제 지표를 모아 4페이지 분량의 기업분석 리포트를 만들고 저장해 주는 개인용 도구.
 
 > 현재 Phase 0(프로젝트 준비) 단계입니다. 자세한 진행 상황은 [docs/progress.md](docs/progress.md)를 보세요.
 
@@ -23,9 +23,11 @@
 
 (Phase 4 이후 작성 예정)
 
+- API 키 확인: `cd backend && .venv/bin/python check_keys.py` (입력 여부만 확인) · `--live`로 키마다 1건씩 호출해 작동 확인 · `--only dart,naver`로 일부만 확인
+
 ## 사용한 API
 
-OpenDART, 네이버 검색 API, 한국은행 ECOS, 공공데이터포털(금융위원회 주식시세정보), Claude API. 키는 `backend/.env`에만 둡니다. (`backend/.env.example` 참고)
+OpenDART, 네이버 검색 API, 한국은행 ECOS, 공공데이터포털(금융위원회 주식시세정보), OpenAI API(기본)·Claude API(선택). 키는 `backend/.env`에만 둡니다. (`backend/.env.example` 참고)
 
 ## 숫자와 AI의 역할 분담
 
