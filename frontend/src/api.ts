@@ -103,6 +103,47 @@ export interface RecentResults {
   notes: string[]
 }
 
+export interface CompetitorInfo {
+  corp_code: string
+  corp_name: string
+  stock_code: string
+  industry_name: string | null
+  included: boolean
+  excluded_reason: string | null
+}
+
+export interface ComparisonColumn {
+  key: string
+  label: string
+  format: 'amount' | 'percent' | 'change'
+  higher_is_better: boolean | null
+  ranked: boolean
+}
+export interface ComparisonCell {
+  value: number | null
+  na_reason: string | null
+  rank: number | null
+  vs_average: 'above' | 'below' | 'same' | null
+}
+export interface Comparison {
+  base_year: number
+  columns: ComparisonColumn[]
+  rows: {
+    corp_code: string
+    corp_name: string
+    is_target: boolean
+    basis: string
+    source_url: string | null
+    values: Record<string, ComparisonCell>
+  }[]
+  averages: Record<string, number | null>
+  ranked_counts: Record<string, number>
+  excluded: { corp_code: string; corp_name: string; reason: string }[]
+  scatter: { corp_code: string; corp_name: string; is_target: boolean; x: number; y: number }[]
+  position: { better: string[]; worse: string[]; same: string[]; unavailable: string[]; text: string }
+  rank_rule: string
+}
+
 export interface ReportDetail {
   id: number
   company: { corp_code: string; corp_name: string; stock_code: string; industry_name: string | null }
@@ -114,6 +155,7 @@ export interface ReportDetail {
   interest_basis: string | null
   notes: string[]
   warnings: string[]
+  competitors: CompetitorInfo[]
   financial_years: FinancialYear[]
   recent_results: RecentResults | null
   recent_reason: string | null
@@ -131,6 +173,7 @@ export interface ReportDetail {
       operating_margin_current: Metric
       operating_margin_prior: Metric
     } | null
+    comparison?: Comparison
   }
   sources: { kind: string; year: number; label: string; rcept_no: string; url: string }[]
 }
@@ -138,11 +181,11 @@ export interface ReportDetail {
 export const searchCompanies = (q: string) =>
   request<SearchResult>(`/api/companies/search?q=${encodeURIComponent(q)}`)
 
-export const createReport = (corpCode: string) =>
+export const createReport = (corpCode: string, competitors: string[]) =>
   request<Job>('/api/reports', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ corp_code: corpCode }),
+    body: JSON.stringify({ corp_code: corpCode, competitors }),
   })
 
 export const getJob = (jobId: string) => request<Job>(`/api/reports/jobs/${jobId}`)

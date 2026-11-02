@@ -60,8 +60,8 @@ def client(tmp_path, monkeypatch):
     db.engine.dispose()
 
 
-def create(client, corp_code="00164779"):
-    r = client.post("/api/reports", json={"corp_code": corp_code})
+def create(client, corp_code="00164779", competitors=("00126380",)):
+    r = client.post("/api/reports", json={"corp_code": corp_code, "competitors": list(competitors)})
     assert r.status_code == 202, r.text
     return r.json()
 
@@ -84,26 +84,26 @@ def counts():
 
 def test_create_list_detail_delete_flow(client):
     started = create(client)
-    assert [s["key"] for s in started["steps"]] == ["collect", "recent", "calc", "save"]
+    assert [s["key"] for s in started["steps"]] == ["collect", "recent", "competitors", "calc", "save"]
     job = wait_done(client, started["job_id"])
     assert job["status"] == "done" and job["error"] is None
-    assert [s["status"] for s in job["steps"]] == ["done"] * 4
+    assert [s["status"] for s in job["steps"]] == ["done"] * 5
 
     listing = client.get("/api/reports").json()
     assert listing["count"] == 1
     item = listing["items"][0]
     assert item["id"] == job["report_id"] and item["corp_name"] == "SK하이닉스"
-    assert item["base_year"] == THIS_YEAR and item["competitor_count"] == 0
+    assert item["base_year"] == THIS_YEAR and item["competitor_count"] == 1
 
     detail = client.get(f"/api/reports/{item['id']}").json()
     assert detail["company"]["industry_code"] == "264" and detail["basis"] == "연결" and detail["year_count"] == 5
-    assert detail["unit"] == "원" and detail["competitors"] == []
+    assert detail["unit"] == "원" and [c["corp_name"] for c in detail["competitors"]] == ["삼성전자"]
     assert [y["year"] for y in detail["financial_years"]] == list(range(THIS_YEAR - 4, THIS_YEAR + 1))
     latest = detail["financial_years"][-1]
     assert latest["revenue"] == 10000 and isinstance(latest["revenue"], int)
     assert detail["data_as_of"] == f"{THIS_YEAR}-12-31"  # 최근 실적이 없으면 기준 사업연도 말
     assert detail["recent_results"] is None and detail["recent_reason"]
-    assert set(detail["results"]) == {"ratios", "dupont", "cashflow", "signals"}
+    assert set(detail["results"]) == {"ratios", "dupont", "cashflow", "signals", "comparison"}
     assert detail["results"]["ratios"][str(THIS_YEAR)]["debt_ratio"]["value"] is not None
     assert detail["sources"][0]["url"].startswith("https://dart.fss.or.kr/dsaf001/main.do?rcpNo=")
     assert len(detail["sources"]) == 5
@@ -116,7 +116,7 @@ def test_create_list_detail_delete_flow(client):
 def test_delete_removes_child_rows_but_keeps_company(client):
     rid = wait_done(client, create(client)["job_id"])["report_id"]
     before = counts()
-    assert before["financial_years"] == 5 and before["calc_results"] == 4 and before["sources"] == 5
+    assert before["financial_years"] == 5 and before["calc_results"] == 5 and before["sources"] == 5
     client.delete(f"/api/reports/{rid}")
     after = counts()
     assert after["reports"] == after["financial_years"] == after["calc_results"] == after["sources"] == 0
@@ -133,7 +133,7 @@ def test_same_company_again_makes_new_report_newest_first(client):
 
 def test_list_filter_by_name(client):
     wait_done(client, create(client, "00164779")["job_id"])
-    wait_done(client, create(client, "00126380")["job_id"])
+    wait_done(client, create(client, "00126380", ("00164779",))["job_id"])
     names = lambda q: [i["corp_name"] for i in client.get("/api/reports", params={"q": q}).json()["items"]]
     assert names("하이닉스") == ["SK하이닉스"] and names("삼성") == ["삼성전자"]
     assert names("없는회사") == [] and names("%") == []  # %가 모든 기업에 맞지 않는다
@@ -142,7 +142,7 @@ def test_list_filter_by_name(client):
 
 def test_rejects_financial_unlisted_and_unknown_companies(client):
     for code, text in (("00126256", "금융업"), ("00688996", "금융업"), ("98", "상장"), ("00000000", "찾을 수 없는")):
-        r = client.post("/api/reports", json={"corp_code": code})
+        r = client.post("/api/reports", json={"corp_code": code, "competitors": ["00126380"]})
         assert r.status_code == 400 and text in r.json()["detail"], code
     assert not jobs.manager.jobs and counts()["reports"] == 0
 
@@ -152,12 +152,12 @@ def test_failed_collect_shows_failed_step_and_saves_nothing(client, monkeypatch)
     job = wait_done(client, create(client)["job_id"])
     assert job["status"] == "failed" and job["report_id"] is None
     assert job["error"]["step"] == "collect" and job["error"]["step_label"] == "재무 수집" and job["error"]["message"]
-    assert [s["status"] for s in job["steps"]] == ["failed", "pending", "pending", "pending"]
+    assert [s["status"] for s in job["steps"]] == ["failed", "pending", "pending", "pending", "pending"]
     assert counts()["reports"] == 0
 
 
 def test_failed_save_rolls_back_everything(client, monkeypatch):
-    def boom(session, company, res, analysis, recent, reason):
+    def boom(session, company, res, analysis, recent, reason, **kw):
         session.merge(Company(corp_code="00164779", corp_name="x", stock_code="1", industry_code=None, industry_name=None))
         session.flush()
         raise RuntimeError("디스크 오류")
@@ -196,3 +196,44 @@ def test_save_with_recent_results_stores_period_and_data_as_of(client):
     assert "recent_changes" in d["results"] and d["sources"][-1]["kind"] == "interim_report"
     assert d["results"]["recent_changes"]["changes"]["revenue"]["value"] == pytest.approx(1.5)
 
+
+
+def test_competitor_selection_rules(client):
+    def post(**body):
+        return client.post("/api/reports", json={"corp_code": "00164779", **body})
+
+    assert "1곳 이상" in post().json()["detail"] and post().status_code == 400
+    assert "1곳 이상" in post(competitors=[]).json()["detail"]
+    five = ["00126380", "a1", "a2", "a3", "a4"]
+    assert "최대 4곳까지" in post(competitors=five).json()["detail"]
+    assert "자신" in post(competitors=["00164779"]).json()["detail"]
+    r = post(competitors=["00126256"])  # 금융업 경쟁사
+    assert r.status_code == 400 and "금융업" in r.json()["detail"]
+    assert not jobs.manager.jobs and counts()["reports"] == 0
+
+
+def test_duplicate_competitors_are_merged_and_comparison_is_saved(client):
+    job = wait_done(client, create(client, competitors=("00126380", "00126380"))["job_id"])
+    d = client.get(f"/api/reports/{job['report_id']}").json()
+    assert len(d["competitors"]) == 1 and d["competitors"][0]["included"] is True
+    comp = d["results"]["comparison"]
+    assert [r["corp_name"] for r in comp["rows"]] == ["SK하이닉스", "삼성전자"] and comp["rows"][0]["is_target"]
+    assert [c["key"] for c in comp["columns"]] == ["revenue", "revenue_growth", "operating_margin", "roe", "debt_ratio"]
+    assert comp["rows"][1]["source_url"].startswith("https://dart.fss.or.kr/")
+    assert comp["excluded"] == []
+
+
+def test_competitor_without_financials_is_excluded_not_fatal(client, monkeypatch):
+    class Selective(FakeFetcher):
+        async def fetch(self, corp_code, year, fs_div, reprt_code="11011"):
+            if corp_code == "00126380":
+                return {"status": "013", "message": "no data", "list": []}
+            return await super().fetch(corp_code, year, fs_div, reprt_code)
+
+    monkeypatch.setattr(jobs, "new_fetcher", lambda c: Selective())
+    job = wait_done(client, create(client)["job_id"])
+    assert job["status"] == "done"
+    d = client.get(f"/api/reports/{job['report_id']}").json()
+    assert d["competitors"][0]["included"] is False and "데이터 부족" in d["competitors"][0]["excluded_reason"]
+    assert [r["corp_name"] for r in d["results"]["comparison"]["rows"]] == ["SK하이닉스"]
+    assert d["results"]["comparison"]["excluded"][0]["corp_name"] == "삼성전자"

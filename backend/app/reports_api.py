@@ -15,8 +15,12 @@ from .ksic import industry_name
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
+MAX_COMPETITORS = 4
+
+
 class CreateReport(BaseModel):
     corp_code: str
+    competitors: list[str] = []  # 경쟁사 고유번호 1~4곳
 
 
 async def _validate_company(corp_code: str) -> dict:
@@ -49,11 +53,25 @@ async def _validate_company(corp_code: str) -> dict:
 @router.post("", status_code=202)
 async def create_report(body: CreateReport):
     """리포트 생성 작업을 시작한다. 진행 상태는 GET /api/reports/jobs/{job_id}로 확인한다."""
-    running = manager.find_running(body.corp_code.strip())  # 같은 기업이 이미 만들어지는 중이면 그 작업을 알려준다
+    corp_code = body.corp_code.strip()
+    codes = list(dict.fromkeys(c.strip() for c in body.competitors))  # 중복 제거, 순서 유지
+    if not codes:
+        raise HTTPException(status_code=400, detail="경쟁사를 1곳 이상 선택해 주세요")
+    if len(codes) > MAX_COMPETITORS:
+        raise HTTPException(status_code=400, detail="최대 4곳까지 선택할 수 있습니다")
+    if corp_code in codes:
+        raise HTTPException(status_code=400, detail="분석 기업 자신은 경쟁사로 선택할 수 없습니다")
+    running = manager.find_running(corp_code)  # 같은 기업이 이미 만들어지는 중이면 그 작업을 알려준다
     if running:
         return running.to_dict()
-    company = await _validate_company(body.corp_code.strip())
-    return manager.start(company).to_dict()
+    company = await _validate_company(corp_code)
+    competitors = []
+    for code in codes:
+        try:
+            competitors.append(await _validate_company(code))
+        except HTTPException as e:
+            raise HTTPException(status_code=e.status_code, detail=f"경쟁사 선택 오류({code}): {e.detail}")
+    return manager.start(company, competitors).to_dict()
 
 
 @router.get("/jobs/{job_id}")

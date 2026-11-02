@@ -4,6 +4,7 @@ import Home from './pages/Home'
 import Progress from './pages/Progress'
 import ReportList from './pages/ReportList'
 import ReportView from './pages/ReportView'
+import SelectCompetitors from './pages/SelectCompetitors'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
       <main className={styles.main}>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/select-competitors" element={<SelectCompetitors />} />
           <Route path="/jobs/:jobId" element={<Progress />} />
           <Route path="/reports" element={<ReportList />} />
           <Route path="/reports/:reportId" element={<ReportView />} />

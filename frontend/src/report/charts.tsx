@@ -1,9 +1,10 @@
 // Recharts 차트들. 값 표시는 format 함수를 거친다.
 import {
-  Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart, CartesianGrid, ComposedChart, LabelList, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Scatter,
+  ScatterChart, Tooltip, XAxis, YAxis, ZAxis,
 } from 'recharts'
 import styles from '../app.module.css'
-import { formatMultiple, formatPercent, formatWonTable } from '../format/number'
+import { formatChange, formatMultiple, formatPercent, formatWonTable } from '../format/number'
 
 const COLORS = ['#2456a6', '#d97706', '#1b873f', '#8e44ad']
 const EOK = 1e8
@@ -76,6 +77,41 @@ export function CashflowChart({ data }: { data: Row[] }) {
           <Bar dataKey="cfi" name="투자" fill={COLORS[1]} />
           <Bar dataKey="cff" name="재무" fill={COLORS[2]} />
         </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+export interface ScatterPoint {
+  corp_name: string
+  x: number // 매출액증가율 (%)
+  y: number // 영업이익률 (%)
+}
+
+/** 성장률(가로) × 영업이익률(세로) 점 그래프. 분석 기업만 다른 색 */
+export function ComparisonScatter({ target, others }: { target: ScatterPoint[]; others: ScatterPoint[] }) {
+  const growth = (v: unknown) => formatChange(Number(v) / 100).text
+  return (
+    <div className={styles.chartbox}>
+      <ResponsiveContainer>
+        <ScatterChart margin={{ top: 16, right: 32, left: 8, bottom: 16 }}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis type="number" dataKey="x" name="매출액증가율" tickFormatter={growth} domain={['auto', 'auto']}
+            label={{ value: '매출액증가율', position: 'insideBottom', offset: -8 }} />
+          <YAxis type="number" dataKey="y" name="영업이익률" tickFormatter={pct} width={64} domain={['auto', 'auto']} />
+          <ZAxis range={[90, 90]} />
+          <ReferenceLine x={0} stroke="#999" />
+          <ReferenceLine y={0} stroke="#999" />
+          <Tooltip cursor={{ strokeDasharray: '3 3' }}
+            formatter={(v, name) => (name === '매출액증가율' ? growth(v) : pct(v))} />
+          <Legend />
+          <Scatter name="분석 기업" data={target} fill={COLORS[1]}>
+            <LabelList dataKey="corp_name" position="top" />
+          </Scatter>
+          <Scatter name="경쟁사" data={others} fill={COLORS[0]}>
+            <LabelList dataKey="corp_name" position="top" />
+          </Scatter>
+        </ScatterChart>
       </ResponsiveContainer>
     </div>
   )

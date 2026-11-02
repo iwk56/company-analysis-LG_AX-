@@ -1,14 +1,14 @@
 import styles from '../app.module.css'
-import type { FinancialYear, MetricMap, ReportDetail } from '../api'
+import type { ComparisonCell, ComparisonColumn, FinancialYear, MetricMap, ReportDetail } from '../api'
 import { ARROW, difference, direction, relativeChange } from '../format/delta'
 import type { Direction } from '../format/delta'
 import type { Formatted, MetricKind } from '../format/number'
 import {
-  formatChange, formatMetric, formatPercentPoint, formatWonCard, formatWonTable,
+  formatChange, formatMetric, formatPercent, formatPercentPoint, formatWonCard, formatWonTable, noData,
 } from '../format/number'
 import { dateText } from '../format/date'
 import { Num, SignalBadge } from '../ui'
-import { CashflowChart, LineGroupChart, TrendChart } from './charts'
+import { CashflowChart, ComparisonScatter, LineGroupChart, TrendChart } from './charts'
 import YearTable from './YearTable'
 
 const EOK = 1e8
@@ -239,6 +239,82 @@ export function Cashflow({ r }: { r: ReportDetail }) {
         row('영업활동', 'cfo'), row('투자활동', 'cfi'), row('재무활동', 'cff'),
         { label: '패턴', cells: years.map((y) => r.results.cashflow[String(y)]?.pattern ?? r.results.cashflow[String(y)]?.na_reason ?? '자료 없음') },
       ]} />
+    </section>
+  )
+}
+
+// ───────────────────────── 2페이지: 경쟁사 비교 (표의 열은 응답의 columns를 보고 그린다)
+const AVG_MARK = { above: '▲', below: '▼', same: '＝' } as const
+const AVG_TITLE = { above: '평균보다 높음', below: '평균보다 낮음', same: '평균과 같음' } as const
+
+function cellValue(col: ComparisonColumn, value: number | null, naReason: string | null = null): Formatted {
+  if (value === null) return noData(naReason ?? undefined)
+  if (col.format === 'amount') return formatWonTable(value)
+  return col.format === 'change' ? formatChange(value) : formatPercent(value)
+}
+
+function CompareCell({ col, cell }: { col: ComparisonColumn; cell: ComparisonCell }) {
+  return (
+    <td>
+      <Num f={cellValue(col, cell.value, cell.na_reason)} />
+      {cell.vs_average && <span title={AVG_TITLE[cell.vs_average]}> {AVG_MARK[cell.vs_average]}</span>}
+      {cell.rank !== null && <span className={styles.sub}> {cell.rank}위</span>}
+    </td>
+  )
+}
+
+export function Competitors({ r }: { r: ReportDetail }) {
+  const comp = r.results.comparison
+  if (!comp) {
+    return (
+      <section className={styles.card}>
+        <h3>경쟁사 비교</h3>
+        <p className={styles.muted}>이 리포트는 경쟁사 없이 만들어졌습니다.</p>
+      </section>
+    )
+  }
+  const point = (p: { corp_name: string; x: number; y: number }) => ({ corp_name: p.corp_name, x: p.x * 100, y: p.y * 100 })
+  return (
+    <section className={styles.card}>
+      <h3>경쟁사 비교 <span className={styles.unit}>({comp.base_year} 사업연도 기준)</span></h3>
+      <p><b>{comp.position.text}</b></p>
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            <th>기업</th>
+            {comp.columns.map((c) => <th key={c.key}>{c.label}{c.format === 'amount' ? ' (억 원)' : ''}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {comp.rows.map((row) => (
+            <tr key={row.corp_code} className={row.is_target ? styles.targetrow : undefined}>
+              <td>
+                {row.corp_name}{row.is_target && ' (분석 기업)'}{' '}
+                <span className={styles.sub}>{row.basis}</span>
+                {row.source_url && <> <a href={row.source_url} target="_blank" rel="noreferrer">원문</a></>}
+              </td>
+              {comp.columns.map((c) => <CompareCell key={c.key} col={c} cell={row.values[c.key]} />)}
+            </tr>
+          ))}
+          <tr>
+            <td>평균 (분석 기업 포함)</td>
+            {comp.columns.map((c) => <td key={c.key}><Num f={cellValue(c, comp.averages[c.key] ?? null)} /></td>)}
+          </tr>
+        </tbody>
+      </table>
+      <p className={styles.footnote}>
+        ▲▼는 해당 칸이 평균보다 높은지 낮은지입니다(좋고 나쁨이 아님). 순위는 1위가 가장 좋은 쪽이며 부채비율은 낮을수록 1위입니다.
+        {' '}{comp.rank_rule}
+      </p>
+      {comp.excluded.map((x) => <p key={x.corp_code} className={styles.notice}>{x.corp_name}: {x.reason}</p>)}
+      {comp.scatter.length > 0 && (
+        <>
+          <p className={styles.tabletitle}>성장률 × 이익률</p>
+          <ComparisonScatter
+            target={comp.scatter.filter((p) => p.is_target).map(point)}
+            others={comp.scatter.filter((p) => !p.is_target).map(point)} />
+        </>
+      )}
     </section>
   )
 }

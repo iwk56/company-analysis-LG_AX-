@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ApiError, createReport, listReports, searchCompanies } from '../api'
-import type { ReportSummary, SearchResult } from '../api'
+import { ApiError, listReports, searchCompanies } from '../api'
+import type { ReportSummary, SearchItem, SearchResult } from '../api'
 import styles from '../app.module.css'
 import { dateText } from '../format/date'
 
@@ -14,7 +14,6 @@ export default function Home() {
   const [searching, setSearching] = useState(false)
   const [result, setResult] = useState<SearchResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [creating, setCreating] = useState<string | null>(null)
   const [recent, setRecent] = useState<ReportSummary[] | null>(null)
   const [recentError, setRecentError] = useState<string | null>(null)
 
@@ -42,16 +41,8 @@ export default function Home() {
     }
   }
 
-  async function create(corpCode: string) {
-    setCreating(corpCode)
-    setError(null)
-    try {
-      const job = await createReport(corpCode)
-      navigate(`/jobs/${job.job_id}`)
-    } catch (e) {
-      setError((e as ApiError).message)
-      setCreating(null)
-    }
+  function pick(company: SearchItem) {
+    navigate('/select-competitors', { state: { company } }) // 다음 화면에서 경쟁사 1~4곳을 고른다
   }
 
   return (
@@ -84,10 +75,10 @@ export default function Home() {
                 </span>
                 <button
                   className={styles.primary}
-                  disabled={c.is_financial || creating !== null}
-                  onClick={() => void create(c.corp_code)}
+                  disabled={c.is_financial}
+                  onClick={() => pick(c)}
                 >
-                  {creating === c.corp_code ? '시작 중…' : '리포트 만들기'}
+                  경쟁사 선택
                 </button>
               </li>
             ))}

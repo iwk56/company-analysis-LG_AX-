@@ -63,3 +63,5 @@
 .meta { display: flex; flex-wrap: wrap; gap: 6px 20px; color: var(--sub); font-size: 0.9rem; }
 .meta b { color: var(--text); font-weight: 600; }
 .sources { font-size: 0.9rem; padding-left: 18px; }
+
+.targetrow td { background: #fff8ec; font-weight: 600; }

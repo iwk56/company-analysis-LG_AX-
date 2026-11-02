@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { ApiError, getReport } from '../api'
 import type { ReportDetail } from '../api'
 import styles from '../app.module.css'
-import { Cashflow, CoreCards, Dupont, Header, RecentBox, Ratios, Sources, Trend } from '../report/sections'
+import { Cashflow, Competitors, CoreCards, Dupont, Header, RecentBox, Ratios, Sources, Trend } from '../report/sections'
 
 export default function ReportPage() {
   const { reportId = '' } = useParams()
@@ -37,6 +37,7 @@ function ReportView({ reportId }: { reportId: string }) {
       <Ratios r={report} />
       <Dupont r={report} />
       <Cashflow r={report} />
+      <Competitors r={report} />
       <Sources r={report} />
     </>
   )

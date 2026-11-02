@@ -11,6 +11,7 @@ import httpx
 
 from . import db
 from .calc import analyze
+from .comparison import Excluded, build_comparison, build_entry
 from .dart import DartError
 from .fin_collect import NoFinancialsError, collect_company, to_year_list
 from .fin_fetch import FinancialsFetcher
@@ -19,7 +20,7 @@ from .report_store import save_report
 
 log = logging.getLogger("uvicorn.error")
 
-STEPS = (("collect", "재무 수집"), ("recent", "최근 실적 수집"), ("calc", "계산"), ("save", "저장"))
+STEPS = (("collect", "재무 수집"), ("recent", "최근 실적 수집"), ("competitors", "경쟁사 재무 수집"), ("calc", "계산"), ("save", "저장"))
 MAX_KEPT_JOBS = 50
 
 
@@ -64,17 +65,17 @@ class JobManager:
     def find_running(self, corp_code: str) -> Job | None:
         return next((j for j in self.jobs.values() if j.corp_code == corp_code and j.status == "running"), None)
 
-    def start(self, company: dict) -> Job:
+    def start(self, company: dict, competitors: list[dict]) -> Job:
         job = Job(id=uuid.uuid4().hex, corp_code=company["corp_code"], corp_name=company["corp_name"])
         self.jobs[job.id] = job
         for old in [j for j in self.jobs.values() if j.status != "running"][:-MAX_KEPT_JOBS]:
             del self.jobs[old.id]
-        task = asyncio.create_task(self._run(job, company))
+        task = asyncio.create_task(self._run(job, company, competitors))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return job
 
-    async def _run(self, job: Job, company: dict) -> None:
+    async def _run(self, job: Job, company: dict, competitors: list[dict]) -> None:
         current = STEPS[0][0]
         step = {s["key"]: s for s in job.steps}
 
@@ -92,13 +93,18 @@ class JobManager:
                 begin("recent")
                 recent, recent_reason = await collect_recent(fetcher, res)
                 step["recent"]["status"] = "done"
+                begin("competitors")
+                collected = await self._collect_competitors(fetcher, competitors)  # 데이터가 없는 회사는 제외 사유와 함께 돌아온다
+                step["competitors"]["status"] = "done"
             begin("calc")
             analysis = analyze(to_year_list(res))
+            comparison = self._compare(company, res, analysis, collected)
             step["calc"]["status"] = "done"
             begin("save")
             with db.SessionLocal() as session:
                 try:
-                    job.report_id = save_report(session, company, res, analysis, recent, recent_reason)
+                    job.report_id = save_report(session, company, res, analysis, recent, recent_reason,
+                                              competitors=competitors, comparison=comparison)
                 except Exception:
                     session.rollback()
                     raise
@@ -109,6 +115,27 @@ class JobManager:
         except Exception:
             log.exception("리포트 생성 중 예상하지 못한 오류 (%s)", job.corp_name)
             self._fail(job, current, "예상하지 못한 오류가 발생했습니다. 서버 로그를 확인해 주세요")
+
+    @staticmethod
+    async def _collect_competitors(fetcher: FinancialsFetcher, competitors: list[dict]) -> list[tuple[dict, object]]:
+        """경쟁사를 하나씩(순차) 수집한다. 재무제표가 없으면 그 회사만 제외하고, DART 오류는 단계 실패로 올린다."""
+        out: list[tuple[dict, object]] = []
+        for c in competitors:
+            try:
+                out.append((c, await collect_company(fetcher, c["corp_code"])))
+            except NoFinancialsError:
+                out.append((c, "데이터 부족으로 제외 (사업보고서 재무제표 없음)"))
+        return out
+
+    @staticmethod
+    def _compare(company: dict, res, analysis, collected: list[tuple[dict, object]]) -> dict:
+        base_year = res.latest_year
+        target = build_entry(company, res, analysis, base_year, is_target=True)
+        if not hasattr(target, "values"):  # 분석 기업은 위에서 매출액이 있는 연도를 찾았으므로 보통 여기에 오지 않는다
+            raise NoFinancialsError(f"분석 기업의 {base_year} 매출액을 찾지 못해 비교할 수 없습니다")
+        others = [Excluded(c["corp_code"], c["corp_name"], r) if isinstance(r, str)
+                  else build_entry(c, r, analyze(to_year_list(r)), base_year) for c, r in collected]
+        return build_comparison(base_year, target, others)
 
     @staticmethod
     def _fail(job: Job, key: str, message: str) -> None:

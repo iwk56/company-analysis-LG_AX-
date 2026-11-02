@@ -15,18 +15,23 @@ AMOUNT_FIELDS = [f.name for f in fields(YearFinancials) if f.name != "year"]
 
 
 def save_report(session: Session, company: dict, res: CompanyFinancials, analysis: dict[int, YearAnalysis],
-                recent: RecentResults | None, recent_reason: str | None) -> int:
+                recent: RecentResults | None, recent_reason: str | None,
+                competitors: list[dict] | None = None, comparison: dict | None = None) -> int:
     """한 트랜잭션으로 저장한다. 중간에 실패하면 아무것도 남지 않는다."""
     session.merge(Company(corp_code=company["corp_code"], corp_name=company["corp_name"],
                           stock_code=company["stock_code"], industry_code=company["industry_code"],
                           industry_name=company["industry_name"]))
     warnings = list(res.warnings)
+    excluded = {x["corp_code"]: x["reason"] for x in (comparison or {}).get("excluded", [])}
+    competitor_rows = [{"corp_code": c["corp_code"], "corp_name": c["corp_name"], "stock_code": c["stock_code"],
+                        "industry_name": c.get("industry_name"), "included": c["corp_code"] not in excluded,
+                        "excluded_reason": excluded.get(c["corp_code"])} for c in competitors or []]
     if company.get("is_financial") is None:
         warnings.append("업종코드를 확인하지 못해 금융업 여부를 판별하지 못했습니다")
     report = Report(
         corp_code=company["corp_code"], created_at=datetime.now().replace(microsecond=0), base_year=res.latest_year,
         data_as_of=data_as_of(res, recent), basis=res.basis, year_count=res.year_count,
-        interest_basis=res.interest_basis(), competitors=[], notes=list(res.notes), warnings=warnings,
+        interest_basis=res.interest_basis(), competitors=competitor_rows, notes=list(res.notes), warnings=warnings,
         recent_reason=None if recent else recent_reason)
     for y in sorted(res.years):
         report.financial_years.append(FinancialYear(
@@ -38,7 +43,10 @@ def save_report(session: Session, company: dict, res: CompanyFinancials, analysi
             basis=recent.basis, period_current=recent.period_current, period_prior=recent.period_prior,
             current={k: won(v) for k, v in recent.current.items()}, prior={k: won(v) for k, v in recent.prior.items()},
             notes=list(recent.notes))
-    for name, content in build_sections(analysis, recent).items():
+    sections = build_sections(analysis, recent)
+    if comparison:
+        sections["comparison"] = comparison
+    for name, content in sections.items():
         report.results.append(CalcResult(section=name, content=content))
     for s in source_rows(res, recent):
         report.sources.append(Source(**s))
