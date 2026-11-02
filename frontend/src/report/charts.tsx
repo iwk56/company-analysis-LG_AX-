@@ -104,7 +104,7 @@ export function ComparisonScatter({ target, others, averageX, averageY }: {
   const yDomain = ys.length ? paddedDomain(ys, { low: 0.2, high: 0.35 }) : undefined
   return (
     <>
-      <div className={styles.chartbox}>
+      <div className={styles.chartbox} style={{ height: 340 }}>
         <ResponsiveContainer>
           <ScatterChart margin={{ top: 8, right: 40, left: 8, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" />
@@ -112,7 +112,7 @@ export function ComparisonScatter({ target, others, averageX, averageY }: {
             <XAxis type="number" dataKey="x" name="매출액증가율" tickFormatter={growth} domain={xDomain ?? ['auto', 'auto']}
               height={52} label={{ value: '매출액증가율', position: 'insideBottom', offset: 0 }} />
             <YAxis type="number" dataKey="y" name="영업이익률" tickFormatter={pct} domain={yDomain ?? ['auto', 'auto']}
-              width={80} label={{ value: '영업이익률', angle: -90, position: 'insideLeft', offset: 4, style: { textAnchor: 'middle' } }} />
+              width={88} label={{ value: '영업이익률', angle: -90, position: 'insideLeft', offset: -2, style: { textAnchor: 'middle' } }} />
             <ZAxis range={[90, 90]} />
             <ReferenceLine x={0} stroke="#999" />
             <ReferenceLine y={0} stroke="#999" />
@@ -120,10 +120,10 @@ export function ComparisonScatter({ target, others, averageX, averageY }: {
             {averageY !== null && <ReferenceLine y={averageY} stroke="#666" strokeDasharray="6 4" />}
             <Tooltip cursor={{ strokeDasharray: '3 3' }}
               formatter={(v, name) => (name === '매출액증가율' ? growth(v) : pct(v))} />
-            <Scatter name="분석 기업" data={target} fill={COLORS[1]}>
+            <Scatter name="분석 기업" data={target} fill={COLORS[1]} isAnimationActive={false}>
               <LabelList dataKey="corp_name" position="top" />
             </Scatter>
-            <Scatter name="경쟁사" data={others} fill={COLORS[0]}>
+            <Scatter name="경쟁사" data={others} fill={COLORS[0]} isAnimationActive={false}>
               <LabelList dataKey="corp_name" position="top" />
             </Scatter>
           </ScatterChart>
