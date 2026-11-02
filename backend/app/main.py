@@ -7,12 +7,13 @@ from dataclasses import dataclass
 import httpx
 from fastapi import FastAPI, HTTPException, Query
 
-from . import company_cache
+from . import company_cache, db
 from .ksic import industry_name
 from .corp_codes import load_listed_corps, search_listed
 from .dart import DartError
 from .industry import is_financial
 from .key_specs import startup_warnings
+from .reports_api import router as reports_router
 
 log = logging.getLogger("uvicorn.error")
 
@@ -22,10 +23,12 @@ async def lifespan(_app: FastAPI):
     # 서버를 켤 때 비어 있는 키 이름만 경고한다 (외부 호출은 하지 않는다)
     for warning in startup_warnings(os.environ):
         log.warning(warning)
+    db.ensure_init()  # SQLite 파일과 테이블 준비 (backend/data/report.db)
     yield
 
 
 app = FastAPI(title="기업분석 리포트 API", lifespan=lifespan)
+app.include_router(reports_router)
 
 
 @app.middleware("http")
