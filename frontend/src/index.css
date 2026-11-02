@@ -1,0 +1,20 @@
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --text: #1f2933;
+  --sub: #5f6b7a;
+  --line: #dde1e7;
+  --accent: #2456a6;
+  --neg: #c62828; /* 음수 */
+  --good: #1b873f;
+  --warn: #b7791f;
+  --bad: #c62828;
+  font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: var(--accent); }
+button { font: inherit; cursor: pointer; }
+input { font: inherit; }

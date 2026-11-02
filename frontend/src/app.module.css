@@ -1,0 +1,65 @@
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; background: var(--card); border-bottom: 1px solid var(--line); }
+.topbar nav { display: flex; gap: 16px; }
+.topbar nav a { text-decoration: none; color: var(--sub); }
+.brand { font-weight: 700; text-decoration: none; color: var(--text); }
+.main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 80px; }
+
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
+.card h3 { margin: 0 0 4px; font-size: 1.05rem; }
+.sub { color: var(--sub); font-size: 0.85rem; }
+.muted { color: var(--sub); }
+.error { color: var(--bad); }
+.notice { background: #fff8e6; border: 1px solid #f0d58c; border-radius: 6px; padding: 8px 12px; margin: 8px 0; font-size: 0.9rem; }
+
+.row { display: flex; gap: 8px; }
+.row input { flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; }
+.primary { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 10px 16px; }
+.primary:disabled { background: #9aa8c0; cursor: not-allowed; }
+.danger { background: none; color: var(--bad); border: 1px solid var(--bad); border-radius: 6px; padding: 4px 10px; }
+.link { background: none; border: 0; color: var(--accent); padding: 0; text-decoration: underline; }
+
+.results { list-style: none; margin: 12px 0 0; padding: 0; }
+.results li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.results li.disabled { opacity: 0.6; }
+
+.steps { list-style: none; padding: 0; margin: 12px 0; }
+.steps li { padding: 8px 0; border-top: 1px solid var(--line); }
+.stepdone { color: var(--good); }
+.steprunning { color: var(--accent); font-weight: 600; }
+.stepfailed { color: var(--bad); font-weight: 600; }
+
+/* 표: 숫자는 오른쪽 정렬, 폭이 같은 숫자 글꼴 */
+.table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin: 8px 0; }
+.table th, .table td { padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.table th { text-align: right; color: var(--sub); font-weight: 600; }
+.table th:first-child, .table td:first-child { text-align: left; }
+.table td { text-align: right; font-variant-numeric: tabular-nums; }
+.table td:first-child { color: var(--text); font-variant-numeric: normal; }
+.tabletitle { font-weight: 600; margin: 12px 0 0; }
+.unit { color: var(--sub); font-weight: 400; font-size: 0.85rem; margin-left: 6px; }
+.footnote { color: var(--sub); font-size: 0.8rem; margin: 2px 0 8px; }
+
+.neg { color: var(--neg); }
+.na { color: var(--sub); font-size: 0.85em; }
+
+.signal { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.9rem; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.good .dot { background: var(--good); } .good { color: var(--good); }
+.warn .dot { background: var(--warn); } .warn { color: var(--warn); }
+.bad .dot { background: var(--bad); } .bad { color: var(--bad); }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.metriccard { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+.metriccard .label { color: var(--sub); font-size: 0.85rem; }
+.metriccard .big { font-size: 1.6rem; font-weight: 700; margin: 4px 0; font-variant-numeric: tabular-nums; }
+.metriccard .delta { font-size: 0.85rem; color: var(--sub); }
+.metriccard .why { font-size: 0.78rem; color: var(--sub); margin-top: 4px; }
+
+.pagebreak { display: flex; align-items: center; gap: 12px; margin: 32px 0 16px; color: var(--sub); font-weight: 700; }
+.pagebreak::before, .pagebreak::after { content: ''; flex: 1; border-top: 2px solid var(--line); }
+.chartbox { width: 100%; height: 280px; }
+.charts2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.header h1 { margin: 0 0 4px; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 20px; color: var(--sub); font-size: 0.9rem; }
+.meta b { color: var(--text); font-weight: 600; }
+.sources { font-size: 0.9rem; padding-left: 18px; }

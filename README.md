@@ -21,7 +21,11 @@
 
 ## 실행 방법
 
-(Phase 4 이후 작성 예정)
+터미널 두 개에서 각각 실행합니다.
+
+- 백엔드: `cd backend && .venv/bin/python -m uvicorn app.main:app --port 8000`
+- 프론트: `cd frontend && npm install && npm run dev` → http://localhost:5173
+- 프론트 테스트: `cd frontend && npm test`
 
 - API 키 확인: `cd backend && .venv/bin/python check_keys.py` (입력 여부만 확인) · `--live`로 키마다 1건씩 호출해 작동 확인 · `--only dart,naver`로 일부만 확인
 
