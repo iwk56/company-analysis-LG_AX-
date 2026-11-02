@@ -267,6 +267,8 @@ function CompareCell({ col, cell }: { col: ComparisonColumn; cell: ComparisonCel
   )
 }
 
+const percentOrNull = (v: number | null | undefined) => (typeof v === 'number' ? v * 100 : null)
+
 export function Competitors({ r }: { r: ReportDetail }) {
   const comp = r.results.comparison
   if (!comp) {
@@ -316,7 +318,8 @@ export function Competitors({ r }: { r: ReportDetail }) {
           <p className={styles.tabletitle}>성장률 × 이익률</p>
           <ComparisonScatter
             target={comp.scatter.filter((p) => p.is_target).map(point)}
-            others={comp.scatter.filter((p) => !p.is_target).map(point)} />
+            others={comp.scatter.filter((p) => !p.is_target).map(point)}
+            averageX={percentOrNull(comp.averages.revenue_growth)} averageY={percentOrNull(comp.averages.operating_margin)} />
         </>
       )}
     </SectionCard>
