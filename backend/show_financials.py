@@ -20,6 +20,7 @@ from app.config import DATA_DIR
 from app.dart import DartError
 from app.fin_collect import ITEM_LABELS, NoFinancialsError, collect_company, to_year_list
 from app.fin_fetch import FinancialsFetcher
+from app.recent_results import collect_recent
 from app.textfmt import table
 
 PERCENT = {"operating_margin", "net_margin", "roe", "roa", "debt_ratio", "current_ratio",
@@ -64,7 +65,34 @@ def metric_text(key: str, m: Metric) -> str:
     return text + ("*" if m.year_end_only else "")
 
 
-def print_company(name: str, res, years: list[int], args) -> None:
+def print_recent(recent, reason: str | None, args) -> None:
+    """2페이지 맨 위 '최근 실적' 박스. 누적 기준이라 5년 추이와 섞지 않고 따로 보여준다."""
+    if recent is None:
+        print(f"\n[최근 실적]  {reason}")
+        return
+    unit = "원" if args.won else "억 원"
+    print(f"\n[최근 실적 — {recent.report_name} 누적, {recent.basis}]  {recent.period_current} vs {recent.period_prior}  단위: {unit}")
+
+    def pct(m: Metric) -> str:
+        return f"{m.value * 100:+.1f}%" if m.value is not None else (m.na_reason or "-").replace("해당 없음", "해당없음")
+
+    rows = []
+    for key, label in (("revenue", "매출액"), ("operating_income", "영업이익")):
+        rows.append([label, money(recent.current[key], args.won), money(recent.prior[key], args.won), pct(recent.changes[key])])
+    mc, mp = recent.operating_margin_current, recent.operating_margin_prior
+    diff = recent.changes["operating_margin"]
+    rows.append(["영업이익률", f"{mc.value * 100:.1f}%" if mc.value is not None else "-",
+                 f"{mp.value * 100:.1f}%" if mp.value is not None else "-",
+                 f"{diff.value * 100:+.1f}%p" if diff.value is not None else "-"])
+    rows.append(["지배주주 순이익", money(recent.current["net_income_parent"], args.won),
+                 money(recent.prior["net_income_parent"], args.won), pct(recent.changes["net_income_parent"])])
+    print(table(["항목", recent.period_current, recent.period_prior, "증감"], rows))
+    print(f"  출처: {recent.rcept_no}  https://dart.fss.or.kr/dsaf001/main.do?rcpNo={recent.rcept_no}")
+    for n in recent.notes:
+        print(f"  ※ {n}")
+
+
+def print_company(name: str, res, years: list[int], args, recent=None, recent_reason=None) -> None:
     unit = "원" if args.won else "억 원"
     print(f"\n{'=' * 70}\n{name}  ({res.corp_code})  기준: {res.basis}재무제표  사업연도 {years[0]}~{years[-1]}"
           f"  [{len(years)}년 자료{'만 있음' if len(years) < 5 else ''}]\n{'=' * 70}")
@@ -72,6 +100,9 @@ def print_company(name: str, res, years: list[int], args) -> None:
         print(f"⚠ {w}")
     for n in res.notes:
         print(f"※ {n}")
+
+    if not args.no_recent:
+        print_recent(recent, recent_reason, args)
 
     rows = [[ITEM_LABELS[f], *[money(getattr(res.years[y], f), args.won) for y in years]] for f in ITEM_LABELS]
     print(f"\n[표준 항목 × 연도]  단위: {unit}")
@@ -132,6 +163,7 @@ async def main() -> int:
     parser.add_argument("companies", nargs="+", help="기업명(상장 정확히 일치) 또는 8자리 고유번호")
     parser.add_argument("--won", action="store_true", help="억 원 대신 원 단위 그대로 출력")
     parser.add_argument("--ratios", action="store_true", help="계산 결과(비율·듀퐁·현금흐름 패턴·신호등)도 출력")
+    parser.add_argument("--no-recent", action="store_true", help="최근 실적(반기/3분기) 박스를 만들지 않음 (DART 호출도 안 함)")
     parser.add_argument("--accounts", action="store_true", help="항목마다 쓴 DART 계정을 출력")
     args = parser.parse_args()
     targets = [resolve(c) for c in args.companies]
@@ -143,7 +175,8 @@ async def main() -> int:
             except (DartError, NoFinancialsError) as e:
                 print(f"\n{name}: 수집 실패 — {e}")
                 return 1
-            print_company(name, res, sorted(res.years), args)
+            recent, reason = (None, None) if args.no_recent else await collect_recent(fetcher, res)
+            print_company(name, res, sorted(res.years), args, recent, reason)
         print(f"\n(이번 실행에서 DART에 실제로 보낸 호출: {fetcher.calls_made}건, 나머지는 저장본 사용)")
     return 0
 

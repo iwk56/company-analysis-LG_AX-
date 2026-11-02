@@ -28,6 +28,7 @@ class CompanyFinancials:
     corp_code: str
     basis: str  # "연결" | "별도"
     latest_year: int
+    fs_div: str = "CFS"  # DART 구분: CFS 연결, OFS 별도
     years: dict[int, YearFinancials] = field(default_factory=dict)
     receipts: dict[int, str] = field(default_factory=dict)  # 연도 → 접수번호(rcept_no)
     used: dict[tuple[int, str], dict] = field(default_factory=dict)  # (연도, 필드) → 쓴 계정
@@ -91,7 +92,7 @@ def _add_filing(result: CompanyFinancials, data: dict, filing_year: int, columns
 async def collect_company(fetcher: FinancialsFetcher, corp_code: str, today: date | None = None) -> CompanyFinancials:
     today = today or date.today()
     latest_year, fs_div, basis, data = await _find_latest(fetcher, corp_code, today)
-    result = CompanyFinancials(corp_code=corp_code, basis=basis, latest_year=latest_year)
+    result = CompanyFinancials(corp_code=corp_code, basis=basis, latest_year=latest_year, fs_div=fs_div)
     rows, _ = _add_filing(result, data, latest_year, COLUMNS)  # N, N-1, N-2
 
     for older_year in (latest_year - 1, latest_year - 2):  # N-3, N-4는 이 보고서들의 전전기 열 (같은 연결/별도 기준으로만)

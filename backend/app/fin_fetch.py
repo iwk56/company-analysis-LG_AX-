@@ -14,6 +14,8 @@ from .dart import DartError, _get
 
 RAW_DIR = DATA_DIR / "dart_raw"
 ANNUAL_REPORT = "11011"  # 사업보고서
+HALF_REPORT = "11012"  # 반기보고서
+THIRD_QUARTER_REPORT = "11014"  # 3분기보고서
 CALL_INTERVAL_SECONDS = 0.5
 
 
@@ -25,14 +27,20 @@ class FinancialsFetcher:
         self._last_call: float | None = None
         self.calls_made = 0  # 실제로 DART에 보낸 호출 수
 
-    def _path(self, corp_code: str, year: int, fs_div: str):
-        return self.raw_dir / f"{corp_code}_{year}_{ANNUAL_REPORT}_{fs_div}.json"
+    def _path(self, corp_code: str, year: int, fs_div: str, reprt_code: str = ANNUAL_REPORT):
+        return self.raw_dir / f"{corp_code}_{year}_{reprt_code}_{fs_div}.json"
 
-    async def fetch(self, corp_code: str, year: int, fs_div: str) -> dict:
-        """{status, message, list} 그대로. 저장본이 있으면 DART를 부르지 않는다."""
-        path = self._path(corp_code, year, fs_div)
+    async def fetch(self, corp_code: str, year: int, fs_div: str, reprt_code: str = ANNUAL_REPORT) -> dict:
+        """{status, message, list} 그대로. 저장본이 있으면 DART를 부르지 않는다.
+
+        데이터 없음(013)은 오래된 연도면 계속 저장하고, 최근 연도(아직 제출 전일 수 있음)는 저장한 그날만 다시 부르지 않는다.
+        """
+        path = self._path(corp_code, year, fs_div, reprt_code)
+        recent = year > self.today.year - 2
         if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            if saved.get("status") != "013" or not recent or saved.get("checked_on") == self.today.isoformat():
+                return saved
         if self._last_call is not None:
             wait = self.interval - (time.monotonic() - self._last_call)
             if wait > 0:
@@ -40,7 +48,7 @@ class FinancialsFetcher:
         self._last_call = time.monotonic()
         self.calls_made += 1
         resp = await _get(self.client, "fnlttSinglAcntAll.json", {
-            "corp_code": corp_code, "bsns_year": str(year), "reprt_code": ANNUAL_REPORT, "fs_div": fs_div})
+            "corp_code": corp_code, "bsns_year": str(year), "reprt_code": reprt_code, "fs_div": fs_div})
         try:
             data = resp.json()
         except ValueError:
@@ -48,8 +56,8 @@ class FinancialsFetcher:
         status = data.get("status")
         if status not in ("000", "013"):  # 013 = 조회된 데이터 없음
             raise DartError(status or "?", data.get("message", ""))
-        # 데이터 없음(013)은 아직 제출 전일 수 있는 최근 연도는 저장하지 않는다
-        if status == "000" or year <= self.today.year - 2:
-            self.raw_dir.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        if status == "013":
+            data["checked_on"] = self.today.isoformat()
+        self.raw_dir.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         return data

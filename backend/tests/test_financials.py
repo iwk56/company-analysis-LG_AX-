@@ -85,9 +85,10 @@ class FakeFetcher:
     def __init__(self, filings):
         self.filings, self.calls = filings, []
 
-    async def fetch(self, corp_code, year, fs_div):
-        self.calls.append((year, fs_div))
-        return self.filings.get((year, fs_div), {"status": "013", "message": "no data", "list": []})
+    async def fetch(self, corp_code, year, fs_div, reprt_code="11011"):
+        key = (year, fs_div) if reprt_code == "11011" else (year, fs_div, reprt_code)
+        self.calls.append(key)
+        return self.filings.get(key, {"status": "013", "message": "no data", "list": []})
 
 
 def filing(year, base, rcept, cfs=True, **overrides):
@@ -230,16 +231,34 @@ def test_saved_responses_are_reused_and_new_calls_are_spaced(tmp_path, monkeypat
     assert f2.calls_made == 0 and len(seen) == 2
 
 
-def test_no_data_is_cached_only_for_older_years(tmp_path):
+def test_no_data_is_cached_for_old_years_and_only_for_the_same_day_for_recent_years(tmp_path):
     def handler(request):
         return httpx.Response(200, json={"status": "013", "message": "조회된 데이터가 없습니다."})
 
     f = make_fetcher(tmp_path, handler, [])
-    run(f.fetch("c1", 2025, "CFS"))   # 최근 연도의 '없음'은 아직 제출 전일 수 있어 저장하지 않는다
-    run(f.fetch("c1", 2025, "CFS"))
-    run(f.fetch("c1", 2020, "CFS"))   # 오래된 연도의 '없음'은 저장
-    run(f.fetch("c1", 2020, "CFS"))
-    assert f.calls_made == 3
+    run(f.fetch("c1", 2025, "CFS"))   # 최근 연도의 '없음'은 아직 제출 전일 수 있어 그날만 저장
+    run(f.fetch("c1", 2025, "CFS"))   # 같은 날 → 저장본 사용
+    assert f.calls_made == 1
+    next_day = FinancialsFetcher(f.client, raw_dir=tmp_path, interval=0, today=date(2026, 11, 3))
+    run(next_day.fetch("c1", 2025, "CFS"))  # 다음 날 → 제출됐을 수 있으니 다시 확인
+    assert next_day.calls_made == 1
+    run(f.fetch("c1", 2020, "CFS"))   # 오래된 연도의 '없음'은 계속 저장
+    run(next_day.fetch("c1", 2020, "CFS"))
+    assert f.calls_made == 2 and next_day.calls_made == 1
+
+
+def test_report_codes_are_saved_separately(tmp_path):
+    seen = []
+
+    def handler(request):
+        seen.append(request.url.params["reprt_code"])
+        return httpx.Response(200, json={"status": "000", "message": "정상", "list": []})
+
+    f = make_fetcher(tmp_path, handler, [])
+    run(f.fetch("c1", 2026, "CFS", "11012"))
+    run(f.fetch("c1", 2026, "CFS", "11014"))
+    run(f.fetch("c1", 2026, "CFS", "11012"))
+    assert seen == ["11012", "11014"] and len(list(tmp_path.glob("c1_2026_*"))) == 2
 
 
 def test_dart_errors_raise_without_saving_and_without_leaking_key(tmp_path, monkeypatch):
