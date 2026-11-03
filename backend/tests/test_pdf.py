@@ -236,3 +236,21 @@ def test_guide_api_and_company_rules(api):
     assert g["base_year"] == 2025 and g["company"]["corp_name"] == "SK하이닉스" and g["interim"]["kind"] == "half"
     r = api.get("/api/pdf/guide", params={"corp_code": "00126256"})  # 금융업
     assert r.status_code == 400 and "금융업" in r.json()["detail"]
+
+
+def corrected_doc(outline=True):
+    """LG전자 [정정] 사업보고서 모양: 목차 4쪽 + 정정신고(보고) + 확인서 + 표지(7쪽)."""
+    toc = ["목 차\n정 정 신 고 (보고) ............ 1"] * 4
+    notice = "정 정 신 고 (보고)\n2026년 07월 06일\n1. 정정대상 공시서류 : 사업보고서\n2. 정정대상 공시서류의 최초제출일 : 2026.03.13"
+    confirm = "【 대표이사 등의 확인 】"
+    cover = cover_doc().pages[1]
+    marks = [(1, "정 정 신 고 (보고)", 5), (1, "【 대표이사 등의 확인 】", 6), (1, "사 업 보 고 서", 7)] if outline else []
+    return PdfDoc(toc + [notice, confirm, cover, "II. 사업의 내용"], marks)
+
+
+def test_corrected_report_cover_found_by_bookmark_and_marked_corrected():
+    r = verify(corrected_doc(), "annual", NAME, 2025)
+    assert r.accepted and r.cover.page == 7 and r.cover.corrected
+    r = verify(corrected_doc(outline=False), "annual", NAME, 2025)  # 책갈피가 없어도 앞 10쪽에서 찾는다
+    assert r.accepted and r.cover.page == 7 and r.cover.corrected
+    assert not verify(load("annual_ok.pdf"), "annual", NAME, 2025).cover.corrected

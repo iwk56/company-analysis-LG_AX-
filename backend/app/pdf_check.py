@@ -3,7 +3,8 @@
 ① 글자를 읽을 수 있는가 ② 보고서 종류 ③ 회사(정식 회사명) ④ 사업연도 기간 — 하나라도 다르면 거절
 ⑤ 요약재무정보 매출액을 DART 값과 대조 — 다르거나 못 찾으면 경고만
 
-표지는 앞 5쪽 중 "사업연도"가 있는 첫 쪽이다(DART PDF는 1~3쪽이 목차라 표지가 4쪽). 비교할 때 공백을 모두 지운다
+표지는 책갈피 중 제목이 "사업보고서·반기보고서·분기보고서"인 쪽, 책갈피가 없으면 앞 10쪽 중 "사업연도"가 있는 첫 쪽이다
+(DART PDF는 1~3쪽이 목차라 표지가 4쪽, 정정 보고서는 목차 4쪽 + "정정신고(보고)" + 확인서 뒤라 7쪽). 비교할 때 공백을 모두 지운다
 (표지 제목이 "사 업 보 고 서"처럼 글자 사이가 띄어져 있다). 12월 결산을 가정한다(spec 6장 확인 필요 6).
 """
 import re
@@ -12,7 +13,8 @@ from datetime import date
 
 from .pdf_reader import TOC_LINE, PdfDoc, find_page, norm
 
-COVER_PAGES = 5
+COVER_PAGES = 10  # 책갈피가 없을 때 표지를 찾는 범위
+HEAD_PAGES = 5
 MIN_TEXT_CHARS = 20  # 앞 5쪽의 공백 뺀 글자가 이보다 적으면 스캔본·이미지로 본다
 
 ANNUAL, HALF, Q3, Q1 = "annual", "half", "q3", "q1"
@@ -37,7 +39,7 @@ def strip_company(name: str) -> str:
 class Cover:
     page: int  # 1부터
     kind: str | None  # annual | half | q3 | q1 | None(못 찾음)
-    corrected: bool  # [기재정정]
+    corrected: bool  # 정정 보고서 ([기재정정] 또는 "정정신고(보고)"가 앞에 붙음)
     company: str | None
     start: date | None
     end: date | None
@@ -65,8 +67,25 @@ def _date(y: str, m: str, d: str) -> date | None:
         return None
 
 
+def _cover_pages(doc: PdfDoc) -> list[int]:
+    """표지 후보 쪽(0부터): 책갈피의 보고서 제목 쪽을 먼저, 그다음 앞 10쪽."""
+    marked = [p - 1 for _lv, title, p in doc.outline
+              if p and 1 <= p <= len(doc.pages) and norm(title).replace("[기재정정]", "") in ("사업보고서", "반기보고서", "분기보고서")]
+    return list(dict.fromkeys(marked + list(range(min(COVER_PAGES, len(doc.pages))))))
+
+
+def _is_corrected(doc: PdfDoc, cover_text: str) -> bool:
+    """정정 보고서: 표지 제목의 [기재정정], 또는 책갈피·앞쪽의 "정정신고(보고)" (2026-11-03 LG전자 [정정] 사업보고서에서 확인)."""
+    if "기재정정" in cover_text:
+        return True
+    if any("정정신고" in norm(title) for _lv, title, _p in doc.outline):
+        return True
+    return any(norm(page).startswith("정정신고") for page in doc.pages[:COVER_PAGES])
+
+
 def read_cover(doc: PdfDoc) -> Cover | None:
-    for i, page in enumerate(doc.pages[:COVER_PAGES]):
+    for i in _cover_pages(doc):
+        page = doc.pages[i]
         t = norm(page)
         if "사업연도" not in t:
             continue
@@ -80,7 +99,7 @@ def read_cover(doc: PdfDoc) -> Cover | None:
         line = re.search(r"^\s*회\s*사\s*명\s*:\s*(.+?)\s*$", page, re.M)  # 화면에 보여줄 원래 모양
         packed = re.search(r"회사명:(.+?)(대표이사|본점소재지|$)", t)
         company = re.sub(r"\s+", " ", line.group(1)) if line else packed.group(1) if packed else None
-        return Cover(page=i + 1, kind=kind, corrected="기재정정" in t, company=company, start=start, end=end)
+        return Cover(page=i + 1, kind=kind, corrected=_is_corrected(doc, t), company=company, start=start, end=end)
     return None
 
 
@@ -138,7 +157,7 @@ def _period_check(slot: str, cover: Cover, base_year: int, kind_ok: bool) -> dic
 
 def verify(doc: PdfDoc, slot: str, official_name: str, base_year: int) -> CheckResult:
     """확인 ①~④. slot: annual(사업보고서 칸) | interim(반기/3분기 칸). base_year: 기준 사업연도 N."""
-    head = sum(len(norm(p)) for p in doc.pages[:COVER_PAGES])
+    head = sum(len(norm(p)) for p in doc.pages[:HEAD_PAGES])
     readable = {"key": "readable", "label": "글자 읽힘", "ok": head >= MIN_TEXT_CHARS,
                 "message": "읽힘" if head >= MIN_TEXT_CHARS else UNREADABLE}
     if not readable["ok"]:
@@ -146,7 +165,7 @@ def verify(doc: PdfDoc, slot: str, official_name: str, base_year: int) -> CheckR
     cover = read_cover(doc)
     if cover is None:
         return CheckResult(True, None, [readable, {"key": "cover", "label": "표지", "ok": False,
-                                                    "message": "앞 5쪽에서 표지(사업연도가 적힌 쪽)를 찾지 못했습니다. "
+                                                    "message": "책갈피와 앞 10쪽에서 표지(사업연도가 적힌 쪽)를 찾지 못했습니다. "
                                                                "DART 공시뷰어에서 받은 PDF를 올려 주세요"}])
     kind = _kind_check(slot, cover.kind)
     return CheckResult(True, cover, [readable, kind, _company_check(cover, official_name),
