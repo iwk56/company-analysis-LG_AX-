@@ -70,7 +70,7 @@ export function CommentsProvider({ reportId, initial, children }: {
 /** 섹션 카드: 기존 카드 틀 + 맨 아래 내 코멘트란. 새 섹션도 이것으로 감싸면 같은 방식으로 코멘트가 붙는다. */
 export function SectionCard({ sectionKey, children }: { sectionKey: SectionKey; children?: ReactNode }) {
   return (
-    <section className={styles.card}>
+    <section className={styles.card} data-section={sectionKey}>
       {children}
       <CommentBox sectionKey={sectionKey} />
     </section>

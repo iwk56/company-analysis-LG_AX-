@@ -33,13 +33,16 @@ function ReportView({ reportId }: { reportId: string }) {
   return (
     <CommentsProvider reportId={report.id} initial={report.comments}>
      <AiProvider report={report}>
-      <Header r={report} />
-      <AiBanner />
       <div className={styles.pagebreak}>1페이지 · 한눈에 보기</div>
-      <Overview r={report} />
-      <CoreCards r={report} />
-      <Swot />
-      <Segments r={report} />
+      {/* 1페이지 디자인(docs/design.md): 위는 대시보드(헤더·핵심 지표), 아래는 번호 붙은 리포트 섹션 */}
+      <div className={styles.p1}>
+        <Header r={report} />
+        <AiBanner />
+        <CoreCards r={report} />
+        <Overview r={report} />
+        <Swot />
+        <Segments r={report} />
+      </div>
       <div className={styles.pagebreak}>2페이지 · 재무 건전성</div>
       <RecentBox r={report} />
       <Trend r={report} />
