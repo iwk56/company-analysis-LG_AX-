@@ -6,7 +6,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import company_cache, db, ecos, jobs, main, news, reports_api
+from app import company_cache, db, ecos, jobs, main, news, reports_api, stocks
 from tests.test_reports import CORPS, OVERVIEW, FakeFetcher
 
 TODAY = date(2026, 11, 2)
@@ -214,9 +214,13 @@ def patch_external(monkeypatch, articles=None, points=None):
     async def fake_enrich(report_id, lock):
         return None
 
+    async def fake_prices(_client, stock_code, start, end):  # 공공데이터포털을 부르지 않는다
+        return []
+
     monkeypatch.setattr(jobs, "fetch_news", fake_news)
     monkeypatch.setattr(jobs, "fetch_macro", fake_macro)
     monkeypatch.setattr(jobs, "enrich_report", fake_enrich)
+    monkeypatch.setattr(stocks, "fetch_prices", fake_prices)
     return seen
 
 
@@ -224,7 +228,7 @@ def test_report_saves_articles_and_macro(api, monkeypatch):
     arts = [{"title": "기사 A", "summary": "요약 A", "link": "http://a/1", "published_at": datetime(2026, 11, 1, 9, 0)}]
     seen = patch_external(monkeypatch, arts, [{"date": "2026-11-02", "value": 1337.2}])
     job = create_and_wait(api)
-    assert job["status"] == "done" and [s["status"] for s in job["steps"]] == ["done"] * 8
+    assert job["status"] == "done" and [s["status"] for s in job["steps"]] == ["done"] * 9
     assert seen["query"] == "SK하이닉스"  # 회사명 하나로 검색
     d = api.get(f"/api/reports/{job['report_id']}").json()
     assert d["articles"]["query"] == "SK하이닉스" and d["articles"]["items"] == [

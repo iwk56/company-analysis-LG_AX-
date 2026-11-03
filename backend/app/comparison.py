@@ -13,9 +13,10 @@ from .fin_collect import CompanyFinancials
 class ColumnDef:
     key: str
     label: str
-    format: str  # amount(원, 화면에서 억 원) | percent | change(부호 붙는 증감률)
-    higher_is_better: bool | None  # True 높을수록 1위, False 낮을수록 1위(부채비율), None 순위 없음(5-B의 PER·PBR)
+    format: str  # amount(원, 화면에서 억 원) | percent | change(부호 붙는 증감률) | multiple(배)
+    higher_is_better: bool | None  # True 높을수록 1위, False 낮을수록 1위(부채비율), None 순위 없음(PER·PBR)
     ranked: bool = True  # 순위를 매기는 열인지
+    in_position: bool = True  # 업계 내 위치 한 줄(우위/열위)에 세는지. 시가총액은 규모 순위라 세지 않는다
 
 
 COLUMN_DEFS: tuple[ColumnDef, ...] = (
@@ -24,11 +25,19 @@ COLUMN_DEFS: tuple[ColumnDef, ...] = (
     ColumnDef("operating_margin", "영업이익률", "percent", True),
     ColumnDef("roe", "ROE", "percent", True),
     ColumnDef("debt_ratio", "부채비율", "percent", False),  # 낮을수록 1위
+    # Phase 5-B: 주식시세(보통주, 가장 최근 거래일). 분모는 기준 사업연도의 지배주주 순이익·자본
+    ColumnDef("market_cap", "시가총액", "amount", True, in_position=False),  # 큰 쪽이 1위 (규모 순위, 좋고 나쁨 아님)
+    ColumnDef("per", "PER", "multiple", None, ranked=False),  # 순위 없이 평균 대비 높음·낮음만
+    ColumnDef("pbr", "PBR", "multiple", None, ranked=False),
 )
+MARKET_KEYS = ("market_cap", "per", "pbr")
+NO_MARKET = "시세 없음"
 
 RANK_RULE = ("순위는 값이 같으면 같은 순위로 매기고, 해당 없음·자료 없음인 기업은 순위와 평균에서 뺍니다. "
              "위의 한 줄은 순위가 아니라 평균(분석 기업 포함) 대비입니다. 우위는 부채비율을 뺀 지표에서는 평균보다 높은 경우, "
-             "부채비율에서는 평균보다 낮은 경우이고, 그 반대는 열위, 평균과 같으면 평균 수준입니다.")
+             "부채비율에서는 평균보다 낮은 경우이고, 그 반대는 열위, 평균과 같으면 평균 수준입니다. "
+             "시가총액·PER·PBR은 위의 한 줄에 세지 않습니다. 시가총액 순위는 큰 쪽이 1위인 규모 순위이고, "
+             "PER·PBR은 높고 낮음에 좋고 나쁨이 없어 순위 없이 평균 대비 높음·낮음만 표시합니다.")
 
 
 @dataclass
@@ -40,6 +49,7 @@ class Entry:
     source_url: str | None
     values: dict[str, Metric]
     is_target: bool = False
+    market_as_of: str | None = None  # 시가총액 기준일(가장 최근 거래일)
 
 
 @dataclass
@@ -49,20 +59,35 @@ class Excluded:
     reason: str
 
 
+def market_values(market: dict | None, fin: YearFinancials) -> dict[str, Metric]:
+    """시가총액·PER·PBR. PER = 시가총액 ÷ 지배주주 순이익, PBR = 시가총액 ÷ 지배주주 자본 (spec.md 3장). 적자·자본잠식이면 해당 없음."""
+    if not market:
+        return {k: Metric(None, NO_MARKET) for k in MARKET_KEYS}
+    cap = market["market_cap"]
+    ni, eq = fin.net_income_parent, fin.equity_parent
+    per = Metric(None, NO_DATA) if ni is None else Metric(None, "해당 없음(적자)") if ni <= 0 else Metric(cap / ni)
+    pbr = Metric(None, NO_DATA) if eq is None else Metric(None, "해당 없음(자본잠식)") if eq <= 0 else Metric(cap / eq)
+    return {"market_cap": Metric(cap), "per": per, "pbr": pbr}
+
+
 def build_entry(company: dict, res: CompanyFinancials, analysis: dict[int, YearAnalysis], base_year: int,
-                is_target: bool = False) -> Entry | Excluded:
-    """기준 사업연도의 값을 뽑는다. 그 연도 자료가 없거나 매출액이 없으면 제외 사유를 돌려준다."""
+                is_target: bool = False, market: dict | None = None) -> Entry | Excluded:
+    """기준 사업연도의 값을 뽑는다. 그 연도 자료가 없거나 매출액이 없으면 제외 사유를 돌려준다.
+
+    market: 가장 최근 거래일의 {"market_cap", "as_of"} (보통주). 없으면 시가총액·PER·PBR은 '시세 없음'.
+    """
     fin: YearFinancials | None = res.years.get(base_year)
     if fin is None or base_year not in analysis:
         return Excluded(company["corp_code"], company["corp_name"], f"데이터 부족으로 제외 ({base_year} 사업연도 자료 없음)")
     if fin.revenue is None:
         return Excluded(company["corp_code"], company["corp_name"], f"데이터 부족으로 제외 ({base_year} 매출액 없음)")
     ratios = analysis[base_year].ratios
-    values = {"revenue": Metric(fin.revenue)}
+    values = {"revenue": Metric(fin.revenue), **market_values(market, fin)}
     for d in COLUMN_DEFS:
         if d.key not in values:
             values[d.key] = ratios.get(d.key, Metric(None, NO_DATA))
-    return Entry(company["corp_code"], company["corp_name"], res.basis, res.source_link(base_year), values, is_target)
+    return Entry(company["corp_code"], company["corp_name"], res.basis, res.source_link(base_year), values, is_target,
+                 market["as_of"] if market else None)
 
 
 def _rank(value: float, all_values: list[float], higher_is_better: bool) -> int:
@@ -75,7 +100,7 @@ def _position(target: Entry, vs: dict[str, str | None]) -> dict:
     """업계 내 위치 한 줄: 표의 ▲▼(평균 대비)와 같은 기준. 부채비율은 평균보다 낮아야 '우위'다."""
     better, worse, same, unavailable = [], [], [], []
     for d in COLUMN_DEFS:
-        if not d.ranked or d.higher_is_better is None:
+        if not d.ranked or d.higher_is_better is None or not d.in_position:
             continue
         v = vs[d.key]
         if v is None:
@@ -129,7 +154,7 @@ def build_comparison(base_year: int, target: Entry, others: list[Entry | Exclude
         return "above" if v > avg else "below"
 
     rows = [{"corp_code": e.corp_code, "corp_name": e.corp_name, "is_target": e.is_target, "basis": e.basis,
-             "source_url": e.source_url,
+             "source_url": e.source_url, "market_as_of": e.market_as_of,
              "values": {d.key: {"value": e.values[d.key].value, "na_reason": e.values[d.key].na_reason,
                                 "rank": ranks[e.corp_code][d.key], "vs_average": vs_average(e, d.key)}
                         for d in COLUMN_DEFS}} for e in entries]
@@ -139,7 +164,7 @@ def build_comparison(base_year: int, target: Entry, others: list[Entry | Exclude
     return {
         "base_year": base_year,
         "columns": [{"key": d.key, "label": d.label, "format": d.format, "higher_is_better": d.higher_is_better,
-                     "ranked": d.ranked} for d in COLUMN_DEFS],
+                     "ranked": d.ranked, "in_position": d.in_position} for d in COLUMN_DEFS],
         "rows": rows,
         "averages": averages,
         "ranked_counts": counts,

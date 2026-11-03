@@ -21,10 +21,11 @@ from .fin_fetch import FinancialsFetcher
 from .news import KST, MONTHS, NewsError, fetch_news, months_ago
 from .recent_results import collect_recent
 from .report_store import save_report
+from .stocks import StockError, fetch_stocks, latest_market
 
 log = logging.getLogger("uvicorn.error")
 
-STEPS = (("collect", "재무 수집"), ("recent", "최근 실적 수집"), ("competitors", "경쟁사 재무 수집"), ("news", "기사 수집"), ("macro", "지표 수집"), ("calc", "계산"), ("save", "저장"), ("ai", "공시 확인·AI 해석"))
+STEPS = (("collect", "재무 수집"), ("recent", "최근 실적 수집"), ("competitors", "경쟁사 재무 수집"), ("news", "기사 수집"), ("macro", "지표 수집"), ("stocks", "주가 수집"), ("calc", "계산"), ("save", "저장"), ("ai", "공시 확인·AI 해석"))
 MAX_KEPT_JOBS = 50
 
 
@@ -114,16 +115,20 @@ class JobManager:
                 begin("macro")
                 macro = await fetch_macro(client)
                 step["macro"]["status"] = "done"
+                begin("stocks")
+                stocks = await fetch_stocks(client, [(company, True)] + [(c, False) for c in competitors])
+                step["stocks"]["status"] = "done"
             begin("calc")
             analysis = analyze(to_year_list(res))
-            comparison = self._compare(company, res, analysis, collected)
+            markets = {s["corp_code"]: latest_market(s) for s in stocks}
+            comparison = self._compare(company, res, analysis, collected, markets)
             step["calc"]["status"] = "done"
             begin("save")
             with db.SessionLocal() as session:
                 try:
                     job.report_id = save_report(session, company, res, analysis, recent, recent_reason,
                                               competitors=competitors, comparison=comparison,
-                                              news=news, macro=macro)
+                                              news=news, macro=macro, stocks=stocks)
                 except Exception:
                     session.rollback()
                     raise
@@ -132,7 +137,7 @@ class JobManager:
             await self._enrich(job)
             step["ai"]["status"] = "done"
             job.status = "done"
-        except (DartError, NoFinancialsError, NewsError, EcosError) as e:
+        except (DartError, NoFinancialsError, NewsError, EcosError, StockError) as e:
             self._fail(job, current, str(e))
         except Exception:
             log.exception("리포트 생성 중 예상하지 못한 오류 (%s)", job.corp_name)
@@ -165,13 +170,14 @@ class JobManager:
         return out
 
     @staticmethod
-    def _compare(company: dict, res, analysis, collected: list[tuple[dict, object]]) -> dict:
+    def _compare(company: dict, res, analysis, collected: list[tuple[dict, object]], markets: dict | None = None) -> dict:
         base_year = res.latest_year
-        target = build_entry(company, res, analysis, base_year, is_target=True)
+        markets = markets or {}
+        target = build_entry(company, res, analysis, base_year, is_target=True, market=markets.get(company["corp_code"]))
         if not hasattr(target, "values"):  # 분석 기업은 위에서 매출액이 있는 연도를 찾았으므로 보통 여기에 오지 않는다
             raise NoFinancialsError(f"분석 기업의 {base_year} 매출액을 찾지 못해 비교할 수 없습니다")
         others = [Excluded(c["corp_code"], c["corp_name"], r) if isinstance(r, str)
-                  else build_entry(c, r, analyze(to_year_list(r)), base_year) for c, r in collected]
+                  else build_entry(c, r, analyze(to_year_list(r)), base_year, market=markets.get(c["corp_code"])) for c, r in collected]
         return build_comparison(base_year, target, others)
 
     @staticmethod

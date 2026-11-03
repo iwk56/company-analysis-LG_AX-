@@ -5,12 +5,13 @@ from app.calc.models import NO_DATA, Metric
 from app.comparison import COLUMN_DEFS, Entry, Excluded, build_comparison
 
 
-def entry(name, revenue=100, growth=0.1, margin=0.1, roe=0.1, debt=1.0, target=False):
+def entry(name, revenue=100, growth=0.1, margin=0.1, roe=0.1, debt=1.0, target=False, cap=None, per=None, pbr=None):
     def m(v):
         return Metric(v) if v is not None else Metric(None, NO_DATA)
 
     return Entry(name, name, "연결", None, {"revenue": m(revenue), "revenue_growth": m(growth),
-                                           "operating_margin": m(margin), "roe": m(roe), "debt_ratio": m(debt)}, target)
+                                           "operating_margin": m(margin), "roe": m(roe), "debt_ratio": m(debt),
+                                           "market_cap": m(cap), "per": m(per), "pbr": m(pbr)}, target)
 
 
 def cell(comp, name, key):

@@ -88,6 +88,12 @@ export function formatPercent(ratio: number | null | undefined): Formatted {
   return build(ratio * 100, 1, '%', false)
 }
 
+/** 주가: 원 단위 정수. 1,418,000원 */
+export function formatPrice(won: number | null | undefined): Formatted {
+  if (!usable(won)) return noData()
+  return build(won, 0, '원', false)
+}
+
 /** 환율: 1,337.2원 (원/달러, 소수 첫째 자리) */
 export function formatExchangeRate(won: number | null | undefined): Formatted {
   if (!usable(won)) return noData()

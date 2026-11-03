@@ -47,6 +47,9 @@ export function evidenceFor(r: ReportDetail, key: string, e?: Enrichments): Evid
   } else if (key === 'corrections') {
     for (const it of e?.corrections?.content?.items.slice(0, 3) ?? []) out.push({ label: `${it.title} (${it.date})`, url: it.url })
     if (out.length === 0 && annual) out.push({ label: `${annual.label} (정정 여부는 DART 공시 목록에서 확인)`, url: annual.url })
+  } else if (key === 'per' || key === 'pbr') {
+    out.push({ label: '공공데이터포털 금융위원회_주식시세정보 (시가총액, 보통주)', url: 'https://www.data.go.kr/data/15094808/openapi.do' })
+    if (annual) out.push({ label: `${annual.label} (${key === 'per' ? '지배주주 순이익' : '지배주주 자본'})`, url: annual.url })
   } else if (key === 'related_party' && annual) out.push({ label: `${annual.label} · 재무제표 주석 (특수관계자)`, url: annual.url })
   else if (annual) out.push({ label: key === 'interest_coverage' ? `${annual.label} · 재무제표와 주석 (금융수익 및 금융비용)` : annual.label, url: annual.url })
   return out

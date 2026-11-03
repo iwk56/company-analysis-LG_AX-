@@ -115,9 +115,10 @@ export interface CompetitorInfo {
 export interface ComparisonColumn {
   key: string
   label: string
-  format: 'amount' | 'percent' | 'change'
+  format: 'amount' | 'percent' | 'change' | 'multiple'
   higher_is_better: boolean | null
   ranked: boolean
+  in_position?: boolean // 업계 내 위치 한 줄에 세는지 (5-B 이전 리포트에는 없음)
 }
 export interface ComparisonCell {
   value: number | null
@@ -134,6 +135,7 @@ export interface Comparison {
     is_target: boolean
     basis: string
     source_url: string | null
+    market_as_of?: string | null // 시가총액 기준일 (가장 최근 거래일)
     values: Record<string, ComparisonCell>
   }[]
   averages: Record<string, number | null>
@@ -167,6 +169,19 @@ export interface MacroSeries {
   period_start: string
   period_end: string
   points: { date: string; value: number }[]
+}
+
+/** 기업별 최근 1년 일별 주가 (보통주). index는 기준일 종가 = 100 (백엔드가 계산) */
+export interface StockSeries {
+  corp_code: string
+  corp_name: string
+  stock_code: string
+  is_target: boolean
+  period_start: string
+  period_end: string
+  base_date: string | null
+  points: { date: string; close: number; shares: number | null; market_cap: number | null; index: number }[]
+  notes: string[]
 }
 
 export interface ReportComment {
@@ -299,6 +314,7 @@ export interface ReportDetail {
   sources: { kind: string; year: number; label: string; rcept_no: string; url: string }[]
   articles: ArticleList | null
   macro: MacroSeries[] | null
+  stocks?: StockSeries[] | null // null·없음 = 주가 수집 기능 이전에 만든 리포트
   enrichments: Enrichments
   comments: Record<string, ReportComment>
 }

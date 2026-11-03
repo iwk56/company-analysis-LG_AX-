@@ -7,6 +7,7 @@ import {
   formatMultiple,
   formatPercent,
   formatPercentPoint,
+  formatPrice,
   formatPeople,
   formatWonCard,
   formatWonMan,
@@ -143,5 +144,14 @@ describe('직원 현황 표시', () => {
   it('직원 수와 근속연수', () => {
     expect(formatPeople(34549).text).toBe('34,549명')
     expect(formatYears(13.4).text).toBe('13.4년')
+  })
+})
+
+describe('formatPrice (주가, 원 단위 정수)', () => {
+  it('쉼표와 원', () => {
+    expect(formatPrice(1418000).text).toBe('1,418,000원')
+  })
+  it('자료 없음', () => {
+    expect(formatPrice(null).muted).toBe(true)
   })
 })

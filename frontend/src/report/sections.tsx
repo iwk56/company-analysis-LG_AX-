@@ -1,18 +1,18 @@
 import { useState } from 'react'
 import styles from '../app.module.css'
-import type { ComparisonCell, ComparisonColumn, FinancialYear, MacroSeries, MetricMap, ReportDetail } from '../api'
+import type { ComparisonCell, ComparisonColumn, FinancialYear, MacroSeries, MetricMap, ReportDetail, StockSeries } from '../api'
 import { ARROW, difference, direction, relativeChange } from '../format/delta'
 import type { Direction } from '../format/delta'
 import type { Formatted, MetricKind } from '../format/number'
 import {
   formatBaseRate, formatChange, formatExchangeRate, formatMetric, formatMultiple, formatPeople, formatPercent, formatPercentPoint, formatWonCard,
-  formatWonMan, formatWonTable, formatYears, noData,
+  formatPrice, formatWonMan, formatWonTable, formatYears, noData,
 } from '../format/number'
 import { dateText } from '../format/date'
 import { Num, SignalBadge } from '../ui'
 import { AiBadge, InfoNote, NoteButton, NotePanel, Summary } from './ai'
 import { evidenceFor, useContent, useNotice } from './aiData'
-import { CashflowChart, ComparisonScatter, LineGroupChart, SegmentChart, SeriesChart, TrendChart } from './charts'
+import { CashflowChart, ComparisonScatter, LineGroupChart, SegmentChart, SeriesChart, StockIndexChart, TrendChart } from './charts'
 import { COLORS } from './palette'
 import YearTable from './YearTable'
 import { SectionCard } from './comments'
@@ -273,6 +273,7 @@ const AVG_TITLE = { above: '평균보다 높음', below: '평균보다 낮음', 
 function cellValue(col: ComparisonColumn, value: number | null, naReason: string | null = null): Formatted {
   if (value === null) return noData(naReason ?? undefined)
   if (col.format === 'amount') return formatWonTable(value)
+  if (col.format === 'multiple') return formatMultiple(value)
   return col.format === 'change' ? formatChange(value) : formatPercent(value)
 }
 
@@ -304,6 +305,7 @@ export function Competitors({ r }: { r: ReportDetail }) {
       <h3>경쟁사 비교 <span className={styles.unit}>({comp.base_year} 사업연도 기준)</span></h3>
       <Summary sectionKey="competitors" />
       <p><b>{comp.position.text}</b></p>
+      <div className={styles.tablescroll}>
       <table className={styles.table}>
         <thead>
           <tr>
@@ -328,10 +330,12 @@ export function Competitors({ r }: { r: ReportDetail }) {
           </tr>
         </tbody>
       </table>
+      </div>
       <p className={styles.footnote}>
-        ▲▼는 해당 칸이 평균보다 높은지 낮은지입니다(좋고 나쁨이 아님). 순위는 1위가 가장 좋은 쪽이며 부채비율은 낮을수록 1위입니다.
+        ▲▼는 해당 칸이 평균보다 높은지 낮은지입니다(좋고 나쁨이 아님). 순위는 1위가 가장 좋은 쪽이며 부채비율은 낮을수록 1위입니다(시가총액은 큰 쪽이 1위인 규모 순위).
         {' '}{comp.rank_rule}
       </p>
+      <MarketNotes r={r} />
       {comp.excluded.map((x) => <p key={x.corp_code} className={styles.notice}>{x.corp_name}: {x.reason}</p>)}
       {comp.scatter.length > 0 && (
         <>
@@ -340,6 +344,77 @@ export function Competitors({ r }: { r: ReportDetail }) {
             target={comp.scatter.filter((p) => p.is_target).map(point)}
             others={comp.scatter.filter((p) => !p.is_target).map(point)}
             averageX={percentOrNull(comp.averages.revenue_growth)} averageY={percentOrNull(comp.averages.operating_margin)} />
+        </>
+      )}
+    </SectionCard>
+  )
+}
+
+/** 비교표의 시가총액·PER·PBR 설명 (5-B 이후 리포트에만) */
+function MarketNotes({ r }: { r: ReportDetail }) {
+  const comp = r.results.comparison
+  if (!comp || !comp.columns.some((c) => c.key === 'market_cap')) return null
+  const dates = [...new Set(comp.rows.map((row) => row.market_as_of).filter((d): d is string => !!d))].sort()
+  return (
+    <div className={styles.footnote}>
+      <p>
+        시가총액은 <b>보통주 기준</b>입니다(공공데이터포털 금융위원회_주식시세정보, 기준일 {dates.length ? dates.join(', ') : '자료 없음'}).
+        {' '}우선주가 있는 기업은 포털 시가총액보다 작게 나올 수 있습니다.
+      </p>
+      <p>
+        PER = 시가총액 ÷ {comp.base_year} 지배주주 순이익, PBR = 시가총액 ÷ {comp.base_year}말 지배주주 자본(계산은 코드).
+        {' '}포털·증권사 앱은 보통 최근 4개 분기 이익을 써서 값이 다를 수 있습니다.
+      </p>
+      <div>설명: PER <InfoNote noteKey="per" /> · PBR <InfoNote noteKey="pbr" /></div>
+    </div>
+  )
+}
+
+// ───────────────────────── 2페이지: 주가 흐름 비교 (기준일 = 100)
+function stockRows(list: StockSeries[]) {
+  const byDate = new Map<string, Record<string, number | string | null>>()
+  for (const s of list) {
+    for (const p of s.points) {
+      const row = byDate.get(p.date) ?? { date: p.date }
+      row[s.corp_code] = p.index
+      byDate.set(p.date, row)
+    }
+  }
+  return [...byDate.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)))
+}
+
+export function Stocks({ r }: { r: ReportDetail }) {
+  const list = r.stocks ?? null
+  const withData = (list ?? []).filter((s) => s.points.length > 0)
+  return (
+    <SectionCard sectionKey="stocks">
+      <h3>주가 흐름 비교 <span className={styles.unit}>(최근 1년, 기준일 종가 = 100)</span></h3>
+      {list === null ? (
+        <p className={styles.muted}>이 리포트는 주가 수집 기능이 생기기 전에 만들어져 자료가 없습니다. 리포트를 다시 만들면 표시됩니다.</p>
+      ) : (
+        <>
+          {withData.length > 0 && (
+            <StockIndexChart data={stockRows(withData)} lines={withData.map((s) => ({ key: s.corp_code, name: s.corp_name, isTarget: s.is_target }))} />
+          )}
+          <ul className={styles.sources}>
+            {list.map((s) => {
+              const first = s.points[0]
+              const last = s.points[s.points.length - 1]
+              return (
+                <li key={s.corp_code}>
+                  <b>{s.corp_name}</b>{s.is_target && ' (분석 기업)'}{' '}
+                  {first && last ? (
+                    <>기준일 {first.date} {formatPrice(first.close).text} → {last.date} {formatPrice(last.close).text} (지수 {last.index.toFixed(1)})</>
+                  ) : <span className={styles.muted}>시세 없음</span>}
+                  {s.notes.map((n) => <div key={n} className={styles.sub}>{n}</div>)}
+                </li>
+              )
+            })}
+          </ul>
+          <p className={styles.footnote}>
+            수정주가가 아니라 액면분할·배당 등이 반영되지 않았을 수 있습니다. 기준일은 리포트 생성일 1년 전 이후 첫 거래일이며, 보통주 종가 기준입니다.
+            {' '}출처: <a href="https://www.data.go.kr/data/15094808/openapi.do" target="_blank" rel="noreferrer">공공데이터포털 금융위원회_주식시세정보</a> (영업일 1~2일 늦게 반영)
+          </p>
         </>
       )}
     </SectionCard>

@@ -162,6 +162,39 @@ export function SeriesChart({ points, name, format, color, step }: {
   )
 }
 
+const OTHER_COLORS = [COLORS[0], COLORS[2], COLORS[3], '#64748b'] // 분석 기업은 COLORS[1]
+
+/** 주가 흐름 비교: 기업마다 기준일 종가 = 100. lines의 key는 data 행의 열 이름 */
+export function StockIndexChart({ data, lines }: {
+  data: Row[]
+  lines: { key: string; name: string; isTarget: boolean }[]
+}) {
+  const values = data.flatMap((r) => lines.map((l) => r[l.key])).filter((v): v is number => typeof v === 'number')
+  const domain = values.length ? paddedDomain([...values, 100], { low: 0.1, high: 0.1 }) : undefined
+  let other = 0
+  const colorOf = (l: { isTarget: boolean }) => (l.isTarget ? COLORS[1] : OTHER_COLORS[other++ % OTHER_COLORS.length])
+  const colored = lines.map((l) => ({ ...l, color: colorOf(l) }))
+  const idx = (v: unknown) => Number(v).toFixed(1)
+  return (
+    <div className={styles.chartbox}>
+      <ResponsiveContainer>
+        <LineChart data={data} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="date" minTickGap={48} tickFormatter={(d: string) => d.slice(0, 7)} />
+          <YAxis tickFormatter={idx} width={56} domain={domain ?? ['auto', 'auto']} />
+          <Tooltip formatter={(v) => idx(v)} labelFormatter={(d) => String(d)} />
+          <Legend verticalAlign="top" height={28} />
+          <ReferenceLine y={100} stroke="#94a3b8" strokeDasharray="4 4" />
+          {colored.map((l) => (
+            <Line key={l.key} dataKey={l.key} name={l.isTarget ? `${l.name} (분석 기업)` : l.name} stroke={l.color}
+              strokeWidth={l.isTarget ? 3 : 1.5} dot={false} connectNulls isAnimationActive={false} />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
 /** 사업부문(품목)별 매출 비중 가로 막대. share는 퍼센트 단위(×100) */
 export function SegmentChart({ data }: { data: { name: string; share: number }[] }) {
   const pctText = (v: unknown) => formatPercent(Number(v) / 100).text

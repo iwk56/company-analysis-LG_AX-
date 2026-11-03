@@ -34,6 +34,14 @@ def get_ecos_api_key() -> str:
     return key
 
 
+def get_data_go_kr_key() -> str:
+    """공공데이터포털 일반 인증키(Decoding 키). 인코딩된 키를 붙여넣었어도 한 번만 인코딩되도록 호출하는 쪽에서 unquote한다."""
+    key = os.environ.get("DATA_GO_KR_KEY", "").strip()
+    if not key:
+        raise RuntimeError("backend/.env 에 DATA_GO_KR_KEY 가 없습니다.")
+    return key
+
+
 def get_llm_provider() -> str:
     return os.environ.get("LLM_PROVIDER", "").strip().lower() or "openai"
 

@@ -10,7 +10,7 @@ from .fin_collect import CompanyFinancials
 from .recent_results import RecentResults
 from .report_build import build_sections, data_as_of, source_rows, won
 from .report_models import (
-    Article, ArticleSearch, CalcResult, Comment, Company, FinancialYear, MacroSeries, RecentResult, Report, Source,
+    Article, ArticleSearch, CalcResult, Comment, Company, FinancialYear, MacroSeries, RecentResult, Report, Source, StockSeries,
 )
 
 AMOUNT_FIELDS = [f.name for f in fields(YearFinancials) if f.name != "year"]
@@ -19,7 +19,7 @@ AMOUNT_FIELDS = [f.name for f in fields(YearFinancials) if f.name != "year"]
 def save_report(session: Session, company: dict, res: CompanyFinancials, analysis: dict[int, YearAnalysis],
                 recent: RecentResults | None, recent_reason: str | None,
                 competitors: list[dict] | None = None, comparison: dict | None = None,
-                news: dict | None = None, macro: list[dict] | None = None) -> int:
+                news: dict | None = None, macro: list[dict] | None = None, stocks: list[dict] | None = None) -> int:
     """한 트랜잭션으로 저장한다. 중간에 실패하면 아무것도 남지 않는다."""
     session.merge(Company(corp_code=company["corp_code"], corp_name=company["corp_name"],
                           stock_code=company["stock_code"], industry_code=company["industry_code"],
@@ -61,6 +61,11 @@ def save_report(session: Session, company: dict, res: CompanyFinancials, analysi
         report.macro_series.append(MacroSeries(
             key=m["key"], label=m["label"], unit=m["unit"], stat_code=m["stat_code"], source_url=m["source_url"],
             period_start=date.fromisoformat(m["start"]), period_end=date.fromisoformat(m["end"]), points=m["points"]))
+    for st in stocks or []:  # stocks.build_series 결과
+        report.stock_series.append(StockSeries(
+            corp_code=st["corp_code"], corp_name=st["corp_name"], stock_code=st["stock_code"], is_target=st["is_target"],
+            period_start=date.fromisoformat(st["start"]), period_end=date.fromisoformat(st["end"]),
+            base_date=date.fromisoformat(st["base_date"]) if st["base_date"] else None, points=st["points"], notes=st["notes"]))
     session.add(report)
     session.commit()
     return report.id
@@ -103,6 +108,10 @@ def get_report(session: Session, report_id: int) -> dict | None:
         "macro": [{"key": m.key, "label": m.label, "unit": m.unit, "stat_code": m.stat_code, "source_url": m.source_url,
                    "period_start": m.period_start.isoformat(), "period_end": m.period_end.isoformat(), "points": m.points}
                   for m in r.macro_series] or None,  # None = 수집 기능 이전에 만든 리포트
+        "stocks": [{"corp_code": s.corp_code, "corp_name": s.corp_name, "stock_code": s.stock_code, "is_target": s.is_target,
+                    "period_start": s.period_start.isoformat(), "period_end": s.period_end.isoformat(),
+                    "base_date": s.base_date.isoformat() if s.base_date else None, "points": s.points, "notes": s.notes}
+                   for s in r.stock_series] or None,  # None = 주가 수집 기능 이전에 만든 리포트
         "enrichments": {e.key: {"status": e.status, "by": e.by, "model": e.model, "content": e.content, "message": e.message,
                                 "warnings": e.warnings, "created_at": e.created_at.isoformat()} for e in r.enrichments},
         "comments": {c.section_key: {"content": c.content, "updated_at": c.updated_at.isoformat()} for c in r.comments},

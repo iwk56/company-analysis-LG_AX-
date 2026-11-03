@@ -105,3 +105,7 @@
 .checkbody p { margin: 3px 0; }
 .checkbody ul { margin: 3px 0; padding-left: 20px; }
 .quote { color: var(--sub); font-size: 0.8rem; }
+
+/* 열이 많은 표(경쟁사 비교): 줄바꿈 대신 가로 스크롤 */
+.tablescroll { overflow-x: auto; }
+.tablescroll .table th, .tablescroll .table td { white-space: nowrap; }

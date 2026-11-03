@@ -6,7 +6,7 @@ import styles from '../app.module.css'
 import { Accounting } from '../report/accounting'
 import { AiBanner, AiProvider } from '../report/ai'
 import { CommentsProvider } from '../report/comments'
-import { Articles, Cashflow, Competitors, CoreCards, Dupont, Header, Macro, Overview, RecentBox, Ratios, Segments, Sources, Trend } from '../report/sections'
+import { Articles, Cashflow, Competitors, CoreCards, Dupont, Header, Macro, Overview, RecentBox, Ratios, Segments, Sources, Stocks, Trend } from '../report/sections'
 
 export default function ReportPage() {
   const { reportId = '' } = useParams()
@@ -46,6 +46,7 @@ function ReportView({ reportId }: { reportId: string }) {
       <Cashflow r={report} />
       <Accounting r={report} />
       <Competitors r={report} />
+      <Stocks r={report} />
       <div className={styles.pagebreak}>3페이지 · 외부 환경과 관심사항</div>
       <Macro r={report} />
       <Articles r={report} />

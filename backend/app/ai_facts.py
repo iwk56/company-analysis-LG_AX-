@@ -154,7 +154,7 @@ def _cell(col: dict, cell: dict) -> str:
     v = cell.get("value")
     if v is None:
         return cell.get("na_reason") or "자료 없음"
-    text = won(v) if col["format"] == "amount" else pct(v, col["format"] == "change")
+    text = won(v) if col["format"] == "amount" else mult(v) if col["format"] == "multiple" else pct(v, col["format"] == "change")
     return text + (f"({cell['rank']}위)" if cell.get("rank") else "")
 
 

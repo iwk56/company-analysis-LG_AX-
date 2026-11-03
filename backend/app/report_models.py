@@ -4,7 +4,7 @@
 """
 from datetime import date, datetime
 
-from sqlalchemy import JSON, BigInteger, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -47,6 +47,7 @@ class Report(Base):
     comments: Mapped[list["Comment"]] = relationship(cascade="all, delete-orphan")
     article_search: Mapped["ArticleSearch | None"] = relationship(cascade="all, delete-orphan", uselist=False)
     macro_series: Mapped[list["MacroSeries"]] = relationship(cascade="all, delete-orphan", order_by="MacroSeries.id")
+    stock_series: Mapped[list["StockSeries"]] = relationship(cascade="all, delete-orphan", order_by="StockSeries.id")
     enrichments: Mapped[list["Enrichment"]] = relationship(cascade="all, delete-orphan", order_by="Enrichment.id")
 
 
@@ -182,6 +183,27 @@ class MacroSeries(Base):
     period_start: Mapped[date] = mapped_column(Date)
     period_end: Mapped[date] = mapped_column(Date)
     points: Mapped[list] = mapped_column(JSON)  # [{"date": "2026-11-02", "value": 1337.2}]
+
+
+class StockSeries(Base):
+    """원자료: 기업별 최근 1년 일별 주가(공공데이터포털 주식시세, 보통주). 행이 없는 리포트는 주가 수집 기능이 생기기 전에 만든 리포트.
+
+    points: [{"date", "close", "shares", "market_cap", "index"}] — index는 기준일(생성일 1년 전 이후 첫 거래일) 종가 = 100 (코드 계산).
+    """
+    __tablename__ = "stock_series"
+    __table_args__ = (UniqueConstraint("report_id", "corp_code"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = _report_fk()
+    corp_code: Mapped[str] = mapped_column(String)
+    corp_name: Mapped[str] = mapped_column(String)
+    stock_code: Mapped[str] = mapped_column(String)
+    is_target: Mapped[bool] = mapped_column(Boolean)
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    base_date: Mapped[date | None] = mapped_column(Date)
+    points: Mapped[list] = mapped_column(JSON)
+    notes: Mapped[list] = mapped_column(JSON)
 
 
 class Enrichment(Base):

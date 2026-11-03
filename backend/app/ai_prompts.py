@@ -42,13 +42,15 @@ SUMMARY_KEYS = [("core_cards", "핵심 지표 카드"), ("recent_results", "최�
                 ("dupont", "듀퐁 분석"), ("cashflow", "현금흐름 패턴"), ("competitors", "경쟁사 비교"), ("segments", "사업부문 비중")]
 NOTE_KEYS = [("revenue_growth", "매출 성장률"), ("operating_margin", "영업이익률"), ("net_margin", "순이익률"), ("roe", "ROE"),
              ("debt_ratio", "부채비율"), ("current_ratio", "유동비율"), ("interest_coverage", "이자보상배율"),
-             ("asset_turnover", "총자산회전율"), ("operating_cashflow", "영업현금흐름"), ("cashflow_pattern", "현금흐름 패턴")]
+             ("asset_turnover", "총자산회전율"), ("operating_cashflow", "영업현금흐름"), ("cashflow_pattern", "현금흐름 패턴"),
+             ("per", "PER"), ("pbr", "PBR")]
 NET_VS_OPERATING_NOTE = ("net_vs_operating", "순이익이 영업이익보다 큰 이유 (영업외 항목)")
 
 WRITE_SUMMARIES = """[할 일] [자료]만 보고 섹션별 한 줄 요약과 지표 주석을 JSON으로 만드세요. 쉬운 말로 씁니다.
 - summaries: 요청한 섹션마다 한 줄(80자 안팎). 이 회사 상황에서 가장 눈에 띄는 점 하나를 씁니다.
 - notes: 요청한 지표마다 meaning(이 지표가 무엇인지 쉬운 말 1문장, 숫자 없이)과 why(이 회사 상황에서 왜 중요한지 1~2문장, 자료의 숫자를 인용).
   이자보상배율이 금융비용으로 계산된 값이면 why에 그 한계를 한 번 언급합니다.
+  PER·PBR은 높고 낮음에 좋고 나쁨이 없으므로 '고평가·저평가'나 투자 판단을 단정하지 말고, 비교 기업 평균과 견준 위치만 씁니다.
 - 자료에 없는 섹션·지표는 해당 키를 아예 빼거나 null로 둡니다.
 출력 형식: {"summaries": {"<섹션 키>": ""}, "notes": {"<지표 키>": {"meaning": "", "why": ""}}}"""
 

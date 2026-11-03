@@ -1,13 +1,13 @@
 """리포트 생성·저장·목록·상세·삭제 (DART를 부르지 않는다: 가짜 수집기와 임시 SQLite 파일)."""
 import asyncio
 import time
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from app import company_cache, db, jobs, main, reports_api
+from app import company_cache, db, jobs, main, reports_api, stocks
 from app.calc import analyze
 from app.fin_collect import collect_company, to_year_list
 from app.recent_results import build_recent
@@ -61,12 +61,18 @@ def client(tmp_path, monkeypatch):
     async def fake_macro(_client, today=None):  # ECOS를 부르지 않는다
         return []
 
+    async def fake_prices(_client, stock_code, start, end):  # 공공데이터포털을 부르지 않는다. 시가총액 = 종가 × 1,000,000주
+        days = [start + timedelta(days=d) for d in (1, 180, 364)]
+        closes = [100_000, 110_000, 120_000] if stock_code == "000660" else [50_000, 50_000, 40_000]
+        return [{"date": d.isoformat(), "close": c, "shares": 1_000_000, "market_cap": c * 1_000_000} for d, c in zip(days, closes)]
+
     async def fake_enrich(report_id, lock):  # 공시 원문·AI는 부르지 않는다 (해당 테스트는 test_enrich.py)
         return None
 
     monkeypatch.setattr(jobs, "fetch_news", fake_news)
     monkeypatch.setattr(jobs, "fetch_macro", fake_macro)
     monkeypatch.setattr(jobs, "enrich_report", fake_enrich)
+    monkeypatch.setattr(stocks, "fetch_prices", fake_prices)
     jobs.manager.jobs.clear()
     with TestClient(main.app) as c:  # with 문: 백그라운드 작업이 요청 사이에도 같은 이벤트 루프에서 돈다
         yield c
@@ -97,10 +103,10 @@ def counts():
 
 def test_create_list_detail_delete_flow(client):
     started = create(client)
-    assert [s["key"] for s in started["steps"]] == ["collect", "recent", "competitors", "news", "macro", "calc", "save", "ai"]
+    assert [s["key"] for s in started["steps"]] == ["collect", "recent", "competitors", "news", "macro", "stocks", "calc", "save", "ai"]
     job = wait_done(client, started["job_id"])
     assert job["status"] == "done" and job["error"] is None
-    assert [s["status"] for s in job["steps"]] == ["done"] * 8
+    assert [s["status"] for s in job["steps"]] == ["done"] * 9
 
     listing = client.get("/api/reports").json()
     assert listing["count"] == 1
@@ -165,7 +171,7 @@ def test_failed_collect_shows_failed_step_and_saves_nothing(client, monkeypatch)
     job = wait_done(client, create(client)["job_id"])
     assert job["status"] == "failed" and job["report_id"] is None
     assert job["error"]["step"] == "collect" and job["error"]["step_label"] == "재무 수집" and job["error"]["message"]
-    assert [s["status"] for s in job["steps"]] == ["failed"] + ["pending"] * 7
+    assert [s["status"] for s in job["steps"]] == ["failed"] + ["pending"] * 8
     assert counts()["reports"] == 0
 
 
@@ -231,7 +237,7 @@ def test_duplicate_competitors_are_merged_and_comparison_is_saved(client):
     assert len(d["competitors"]) == 1 and d["competitors"][0]["included"] is True
     comp = d["results"]["comparison"]
     assert [r["corp_name"] for r in comp["rows"]] == ["SK하이닉스", "삼성전자"] and comp["rows"][0]["is_target"]
-    assert [c["key"] for c in comp["columns"]] == ["revenue", "revenue_growth", "operating_margin", "roe", "debt_ratio"]
+    assert [c["key"] for c in comp["columns"]] == ["revenue", "revenue_growth", "operating_margin", "roe", "debt_ratio", "market_cap", "per", "pbr"]
     assert comp["rows"][1]["source_url"].startswith("https://dart.fss.or.kr/")
     assert comp["excluded"] == []
 
