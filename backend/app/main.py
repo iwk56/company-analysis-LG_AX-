@@ -13,6 +13,7 @@ from .corp_codes import load_listed_corps, search_listed
 from .dart import DartError
 from .industry import is_financial
 from .key_specs import startup_warnings
+from .pdf_api import router as pdf_router
 from .reports_api import router as reports_router
 
 log = logging.getLogger("uvicorn.error")
@@ -52,6 +53,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="기업분석 리포트 API", lifespan=lifespan)
 app.include_router(reports_router)
+app.include_router(pdf_router)
 
 
 @app.middleware("http")

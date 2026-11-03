@@ -49,6 +49,7 @@ class Report(Base):
     macro_series: Mapped[list["MacroSeries"]] = relationship(cascade="all, delete-orphan", order_by="MacroSeries.id")
     stock_series: Mapped[list["StockSeries"]] = relationship(cascade="all, delete-orphan", order_by="StockSeries.id")
     enrichments: Mapped[list["Enrichment"]] = relationship(cascade="all, delete-orphan", order_by="Enrichment.id")
+    pdfs: Mapped[list["ReportPdf"]] = relationship(cascade="all, delete-orphan", order_by="ReportPdf.id")
 
 
 def _report_fk() -> Mapped[int]:
@@ -226,3 +227,27 @@ class Enrichment(Base):
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class ReportPdf(Base):
+    """올린 PDF (spec.md 4장). 원본 파일은 저장하지 않고 확인 결과와 섹션별 글자·쪽 범위만 둔다. 행이 없는 리포트는 PDF 기능 이전에 만든 리포트.
+
+    sections: [{key, label, found, title, page_start, page_end, chars, over_limit, pages: [{page, text}]}] — 쪽 번호는 PDF 뷰어 기준(1부터).
+    """
+    __tablename__ = "report_pdfs"
+    __table_args__ = (UniqueConstraint("report_id", "slot"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = _report_fk()
+    slot: Mapped[str] = mapped_column(String)  # annual(사업보고서) | interim(반기/3분기)
+    file_name: Mapped[str] = mapped_column(String)
+    sha256: Mapped[str] = mapped_column(String)
+    page_count: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String)  # annual | half | q3
+    corrected: Mapped[bool] = mapped_column(Boolean)  # [기재정정]
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    checks: Mapped[list] = mapped_column(JSON)  # 확인 ①~④ [{key, label, ok, message}]
+    revenue_check: Mapped[dict | None] = mapped_column(JSON)  # ⑤ 매출액 대조 (경고만)
+    split_method: Mapped[str] = mapped_column(String)  # bookmarks(책갈피) | headings(본문 제목)
+    sections: Mapped[list] = mapped_column(JSON)

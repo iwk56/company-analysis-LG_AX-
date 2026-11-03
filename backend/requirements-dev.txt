@@ -1,0 +1,2 @@
+# 테스트용 PDF(tests/fixtures/pdf/)를 다시 만들 때만 필요 (실행에는 쓰지 않음)
+reportlab==5.1.0

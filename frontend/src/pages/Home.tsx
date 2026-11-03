@@ -46,7 +46,7 @@ export default function Home() {
       setError('현재 버전은 일반기업만 분석합니다') // 금융업은 선택해도 진행하지 않는다 (spec F1)
       return
     }
-    navigate('/select-competitors', { state: { company } }) // 다음 화면에서 경쟁사 1~4곳을 고른다
+    navigate('/upload-reports', { state: { company } }) // 다음 화면에서 사업보고서 PDF를 올린다 (경쟁사 선택 단계는 2026-11-03 흐름에서 뺌)
   }
 
   return (
@@ -81,7 +81,7 @@ export default function Home() {
                   className={styles.primary}
                   onClick={() => pick(c)}
                 >
-                  경쟁사 선택
+                  보고서 PDF 올리기
                 </button>
               </li>
             ))}

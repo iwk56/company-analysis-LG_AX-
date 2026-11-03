@@ -14,6 +14,7 @@ from .db import get_session
 from .industry import is_financial
 from .jobs import collect_news, manager
 from .news import NewsError
+from .pdf_uploads import store as uploads
 from .ksic import industry_name
 from .report_models import Report
 
@@ -27,7 +28,31 @@ SECTION_KEY = re.compile(r"^[a-z][a-z0-9_]{0,39}$")  # 섹션이 늘어도 키 �
 
 class CreateReport(BaseModel):
     corp_code: str
-    competitors: list[str] = []  # 경쟁사 고유번호 1~4곳
+    annual_upload_id: str | None = None  # 확인된 사업보고서 PDF (필수)
+    interim_upload_id: str | None = None  # 확인된 반기/3분기보고서 PDF (선택)
+    competitors: list[str] = []  # 경쟁사 고유번호 0~4곳. 2026-11-03부터 화면은 보내지 않는다(코드 유지, spec F2)
+
+
+EXPIRED = "올린 PDF를 찾을 수 없습니다 (서버를 다시 켰거나 2시간이 지났습니다). PDF를 다시 올려 주세요"
+
+
+def _pdfs(corp_code: str, annual_id: str | None, interim_id: str | None) -> list:
+    """생성에 쓸 확인된 PDF. 사업보고서는 필수, 반기/3분기는 선택 (spec F2 "PDF를 올리지 않으면")."""
+    if not annual_id:
+        raise HTTPException(status_code=400, detail="사업보고서 PDF를 먼저 올려 주세요")
+    out = []
+    for slot, upload_id in (("annual", annual_id), ("interim", interim_id)):
+        if not upload_id:
+            continue
+        u = uploads.get(upload_id)
+        if u is None:
+            raise HTTPException(status_code=400, detail=EXPIRED)
+        if u.corp_code != corp_code or u.slot != slot:
+            raise HTTPException(status_code=400, detail="이 기업의 해당 칸에 올린 PDF가 아닙니다. PDF를 다시 올려 주세요")
+        out.append(u)
+    if len(out) == 2 and out[0].sha256 == out[1].sha256:
+        raise HTTPException(status_code=400, detail="같은 파일을 두 칸에 올렸습니다. 칸에 맞는 보고서를 올려 주세요")
+    return out
 
 
 async def _validate_company(corp_code: str) -> dict:
@@ -62,8 +87,6 @@ async def create_report(body: CreateReport):
     """리포트 생성 작업을 시작한다. 진행 상태는 GET /api/reports/jobs/{job_id}로 확인한다."""
     corp_code = body.corp_code.strip()
     codes = list(dict.fromkeys(c.strip() for c in body.competitors))  # 중복 제거, 순서 유지
-    if not codes:
-        raise HTTPException(status_code=400, detail="경쟁사를 1곳 이상 선택해 주세요")
     if len(codes) > MAX_COMPETITORS:
         raise HTTPException(status_code=400, detail="최대 4곳까지 선택할 수 있습니다")
     if corp_code in codes:
@@ -71,6 +94,7 @@ async def create_report(body: CreateReport):
     running = manager.find_running(corp_code)  # 같은 기업이 이미 만들어지는 중이면 그 작업을 알려준다
     if running:
         return running.to_dict()
+    pdfs = _pdfs(corp_code, body.annual_upload_id, body.interim_upload_id)
     company = await _validate_company(corp_code)
     competitors = []
     for code in codes:
@@ -78,7 +102,7 @@ async def create_report(body: CreateReport):
             competitors.append(await _validate_company(code))
         except HTTPException as e:
             raise HTTPException(status_code=e.status_code, detail=f"경쟁사 선택 오류({code}): {e.detail}")
-    return manager.start(company, competitors).to_dict()
+    return manager.start(company, competitors, pdfs).to_dict()
 
 
 @router.post("/jobs/{job_id}/retry", status_code=202)

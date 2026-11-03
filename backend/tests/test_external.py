@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import company_cache, db, ecos, jobs, main, news, reports_api, stocks
-from tests.test_reports import CORPS, OVERVIEW, FakeFetcher
+from tests.test_reports import CORPS, OVERVIEW, FakeFetcher, fake_upload
 
 TODAY = date(2026, 11, 2)
 
@@ -193,7 +193,8 @@ def api(tmp_path, monkeypatch):
 
 
 def create_and_wait(client):
-    started = client.post("/api/reports", json={"corp_code": "00164779", "competitors": ["00126380"]}).json()
+    started = client.post("/api/reports", json={"corp_code": "00164779", "competitors": ["00126380"],
+                                                "annual_upload_id": fake_upload().id}).json()
     for _ in range(100):
         job = client.get(f"/api/reports/jobs/{started['job_id']}").json()
         if job["status"] != "running":
@@ -230,7 +231,7 @@ def test_report_saves_articles_and_macro(api, monkeypatch):
     arts = [{"title": "기사 A", "summary": "요약 A", "link": "http://a/1", "published_at": datetime(2026, 11, 1, 9, 0)}]
     seen = patch_external(monkeypatch, arts, [{"date": "2026-11-02", "value": 1337.2}])
     job = create_and_wait(api)
-    assert job["status"] == "done" and [s["status"] for s in job["steps"]] == ["done"] * 9
+    assert job["status"] == "done" and [s["status"] for s in job["steps"]] == ["done"] * 10
     assert seen["query"] == "SK하이닉스"  # 회사명 하나로 검색
     d = api.get(f"/api/reports/{job['report_id']}").json()
     assert d["articles"]["query"] == "SK하이닉스" and d["articles"]["items"] == [

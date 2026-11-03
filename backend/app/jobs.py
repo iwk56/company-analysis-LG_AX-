@@ -18,13 +18,14 @@ from .enrich import enrich_report
 from .fin_collect import NoFinancialsError, collect_company, to_year_list
 from .fin_fetch import FinancialsFetcher
 from .news import NewsError, fetch_news, now_kst
+from .pdf_uploads import Upload, to_record
 from .recent_results import collect_recent
 from .report_store import save_report
 from .stocks import StockError, fetch_stocks, latest_market
 
 log = logging.getLogger("uvicorn.error")
 
-STEPS = (("collect", "재무 수집"), ("recent", "최근 실적 수집"), ("competitors", "경쟁사 재무 수집"), ("news", "기사 수집"), ("macro", "지표 수집"), ("stocks", "주가 수집"), ("calc", "계산"), ("save", "저장"), ("ai", "공시 확인·AI 해석"))
+STEPS = (("pdf", "PDF 읽기"), ("collect", "재무 수집"), ("recent", "최근 실적 수집"), ("competitors", "경쟁사 재무 수집"), ("news", "기사 수집"), ("macro", "지표 수집"), ("stocks", "주가 수집"), ("calc", "계산"), ("save", "저장"), ("ai", "공시 확인·AI 해석"))
 MAX_KEPT_JOBS = 50
 
 
@@ -50,11 +51,12 @@ class Job:
     corp_code: str
     corp_name: str
     status: str = "running"  # running | done | failed
-    steps: list[dict] = field(default_factory=lambda: [{"key": k, "label": l, "status": "pending"} for k, l in STEPS])
+    steps: list[dict] = field(default_factory=list)  # 경쟁사 재무 수집은 경쟁사가 있을 때만 (2026-11-03부터 새 리포트는 경쟁사 없음)
     report_id: int | None = None
     error: dict | None = None  # {"step": 단계 키, "step_label": 단계 이름, "message": 안내}
     company: dict = field(default_factory=dict, repr=False)  # 다시 시도할 때 쓰는 입력 (화면 응답에는 넣지 않음)
     competitors: list = field(default_factory=list, repr=False)
+    pdfs: list[Upload] = field(default_factory=list, repr=False)  # 확인된 PDF (사업보고서 + 반기/3분기). 다시 시도에도 쓴다
 
     def to_dict(self) -> dict:
         return {"job_id": self.id, "corp_code": self.corp_code, "corp_name": self.corp_name, "status": self.status,
@@ -85,11 +87,12 @@ class JobManager:
 
     def retry(self, failed: Job) -> Job:
         """실패한 작업과 같은 입력으로 처음부터 다시 만든다. 이미 같은 기업이 진행 중이면 그 작업을 돌려준다."""
-        return self.find_running(failed.corp_code) or self.start(failed.company, failed.competitors)
+        return self.find_running(failed.corp_code) or self.start(failed.company, failed.competitors, failed.pdfs)
 
-    def start(self, company: dict, competitors: list[dict]) -> Job:
+    def start(self, company: dict, competitors: list[dict], pdfs: list[Upload] | None = None) -> Job:
+        steps = [{"key": k, "label": l, "status": "pending"} for k, l in STEPS if k != "competitors" or competitors]
         job = Job(id=uuid.uuid4().hex, corp_code=company["corp_code"], corp_name=company["corp_name"],
-                  company=company, competitors=competitors)
+                  steps=steps, company=company, competitors=competitors, pdfs=list(pdfs or []))
         self.jobs[job.id] = job
         for old in [j for j in self.jobs.values() if j.status != "running"][:-MAX_KEPT_JOBS]:
             del self.jobs[old.id]
@@ -108,17 +111,26 @@ class JobManager:
             step[key]["status"] = "running"
 
         try:
+            begin("pdf")
+            pdfs = [await asyncio.to_thread(to_record, u) for u in job.pdfs]  # 목차로 섹션을 나눈다 (못 찾은 섹션도 리포트는 만든다)
+            step["pdf"]["status"] = "done"
             async with httpx.AsyncClient() as client, self.dart_lock():
                 fetcher = new_fetcher(client)
                 begin("collect")
                 res = await collect_company(fetcher, job.corp_code)
+                annual = next((u for u in job.pdfs if u.slot == "annual"), None)
+                if annual and annual.base_year != res.latest_year:
+                    raise StepFailed(f"올린 사업보고서({annual.base_year})와 DART의 최신 사업보고서({res.latest_year}) 연도가 다릅니다. "
+                                     f"{res.latest_year} 사업보고서 PDF를 다시 올려 주세요")
                 step["collect"]["status"] = "done"
                 begin("recent")
                 recent, recent_reason = await collect_recent(fetcher, res)
                 step["recent"]["status"] = "done"
-                begin("competitors")
-                collected = await self._collect_competitors(fetcher, competitors)  # 데이터가 없는 회사는 제외 사유와 함께 돌아온다
-                step["competitors"]["status"] = "done"
+                collected = []
+                if competitors:  # 경쟁사 비교는 화면에서 숨겼고 코드는 남겨 둔다 (spec F2 "구 F2 경쟁사 선택")
+                    begin("competitors")
+                    collected = await self._collect_competitors(fetcher, competitors)  # 데이터가 없는 회사는 제외 사유와 함께 돌아온다
+                    step["competitors"]["status"] = "done"
             async with httpx.AsyncClient() as client:  # 네이버·ECOS는 DART와 별개라 DART 잠금 밖에서 부른다
                 begin("news")
                 news = await collect_news(client, job.corp_name)
@@ -139,7 +151,7 @@ class JobManager:
                 try:
                     job.report_id = save_report(session, company, res, analysis, recent, recent_reason,
                                               competitors=competitors, comparison=comparison,
-                                              news=news, macro=macro, stocks=stocks)
+                                              news=news, macro=macro, stocks=stocks, pdfs=pdfs)
                 except Exception:
                     session.rollback()
                     raise
@@ -148,6 +160,9 @@ class JobManager:
             await self._enrich(job)
             step["ai"]["status"] = "done"
             job.status = "done"
+            job.pdfs = []  # 글자는 DB에 저장했으므로 메모리에서 놓는다
+        except StepFailed as e:
+            self._fail(job, current, e.message)
         except (DartError, NoFinancialsError, NewsError, EcosError, StockError) as e:
             self._fail(job, current, str(e))
         except Exception:

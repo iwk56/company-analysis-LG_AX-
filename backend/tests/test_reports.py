@@ -2,13 +2,16 @@
 import asyncio
 import time
 from datetime import date, timedelta
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from app import company_cache, db, jobs, main, reports_api, stocks
+from app import company_cache, db, jobs, main, pdf_uploads, reports_api, stocks
 from app.calc import analyze
+from app.pdf_check import CheckResult, Cover
+from app.pdf_reader import extract
 from app.fin_collect import collect_company, to_year_list
 from app.recent_results import build_recent
 from app.report_build import data_as_of
@@ -27,6 +30,18 @@ CORPS = [
 OVERVIEW = {"00164779": ("264", "Y"), "00126380": ("264", "Y"), "00126256": ("65110", "Y"),
             "00688996": ("64992", "Y"), "98": ("264", "E")}
 THIS_YEAR = date.today().year - 1  # 수집기가 처음 찾는 사업연도
+FIXTURE_DOC = extract((Path(__file__).parent / "fixtures" / "pdf" / "annual_ok.pdf").read_bytes())
+
+
+def fake_upload(slot="annual", corp_code="00164779", base_year=THIS_YEAR, sha=None):
+    """확인을 통과한 PDF를 메모리 보관소에 넣는다 (글자는 테스트용 PDF, 확인 결과는 기준 사업연도에 맞춘다)."""
+    kind = "annual" if slot == "annual" else "half"
+    start, end = (date(base_year, 1, 1), date(base_year, 12, 31)) if slot == "annual" else (date(base_year + 1, 1, 1), date(base_year + 1, 6, 30))
+    cover = Cover(page=2, kind=kind, corrected=False, company="에스케이하이닉스 주식회사", start=start, end=end)
+    check = CheckResult(True, cover, [{"key": "readable", "label": "글자 읽힘", "ok": True, "message": "읽힘"}])
+    return pdf_uploads.store.put(pdf_uploads.Upload(
+        id=pdf_uploads.new_id(), corp_code=corp_code, slot=slot, file_name=f"{slot}.pdf", sha256=sha or pdf_uploads.new_id(),
+        size=1, base_year=base_year, doc=FIXTURE_DOC, check=check, revenue={"status": "match"}))
 
 
 class FakeFetcher:
@@ -74,13 +89,17 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(jobs, "enrich_report", fake_enrich)
     monkeypatch.setattr(stocks, "fetch_prices", fake_prices)
     jobs.manager.jobs.clear()
+    pdf_uploads.store.items.clear()
     with TestClient(main.app) as c:  # with 문: 백그라운드 작업이 요청 사이에도 같은 이벤트 루프에서 돈다
         yield c
     db.engine.dispose()
 
 
-def create(client, corp_code="00164779", competitors=("00126380",)):
-    r = client.post("/api/reports", json={"corp_code": corp_code, "competitors": list(competitors)})
+def create(client, corp_code="00164779", competitors=("00126380",), interim=False):
+    body = {"corp_code": corp_code, "competitors": list(competitors), "annual_upload_id": fake_upload(corp_code=corp_code).id}
+    if interim:
+        body["interim_upload_id"] = fake_upload("interim", corp_code=corp_code).id
+    r = client.post("/api/reports", json=body)
     assert r.status_code == 202, r.text
     return r.json()
 
@@ -103,10 +122,10 @@ def counts():
 
 def test_create_list_detail_delete_flow(client):
     started = create(client)
-    assert [s["key"] for s in started["steps"]] == ["collect", "recent", "competitors", "news", "macro", "stocks", "calc", "save", "ai"]
+    assert [s["key"] for s in started["steps"]] == ["pdf", "collect", "recent", "competitors", "news", "macro", "stocks", "calc", "save", "ai"]
     job = wait_done(client, started["job_id"])
     assert job["status"] == "done" and job["error"] is None
-    assert [s["status"] for s in job["steps"]] == ["done"] * 9
+    assert [s["status"] for s in job["steps"]] == ["done"] * 10
 
     listing = client.get("/api/reports").json()
     assert listing["count"] == 1
@@ -161,7 +180,7 @@ def test_list_filter_by_name(client):
 
 def test_rejects_financial_unlisted_and_unknown_companies(client):
     for code, text in (("00126256", "금융업"), ("00688996", "금융업"), ("98", "상장"), ("00000000", "찾을 수 없는")):
-        r = client.post("/api/reports", json={"corp_code": code, "competitors": ["00126380"]})
+        r = client.post("/api/reports", json={"corp_code": code, "annual_upload_id": fake_upload(corp_code=code).id})
         assert r.status_code == 400 and text in r.json()["detail"], code
     assert not jobs.manager.jobs and counts()["reports"] == 0
 
@@ -171,7 +190,7 @@ def test_failed_collect_shows_failed_step_and_saves_nothing(client, monkeypatch)
     job = wait_done(client, create(client)["job_id"])
     assert job["status"] == "failed" and job["report_id"] is None
     assert job["error"]["step"] == "collect" and job["error"]["step_label"] == "재무 수집" and job["error"]["message"]
-    assert [s["status"] for s in job["steps"]] == ["failed"] + ["pending"] * 8
+    assert [s["status"] for s in job["steps"]] == ["done", "failed"] + ["pending"] * 8
     assert counts()["reports"] == 0
 
 
@@ -219,10 +238,8 @@ def test_save_with_recent_results_stores_period_and_data_as_of(client):
 
 def test_competitor_selection_rules(client):
     def post(**body):
-        return client.post("/api/reports", json={"corp_code": "00164779", **body})
+        return client.post("/api/reports", json={"corp_code": "00164779", "annual_upload_id": fake_upload().id, **body})
 
-    assert "1곳 이상" in post().json()["detail"] and post().status_code == 400
-    assert "1곳 이상" in post(competitors=[]).json()["detail"]
     five = ["00126380", "a1", "a2", "a3", "a4"]
     assert "최대 4곳까지" in post(competitors=five).json()["detail"]
     assert "자신" in post(competitors=["00164779"]).json()["detail"]
@@ -322,3 +339,67 @@ def test_retry_rejects_unknown_and_non_failed_jobs(client):
     assert client.post("/api/reports/jobs/nope/retry").status_code == 404
     done = wait_done(client, create(client)["job_id"])
     assert client.post(f"/api/reports/jobs/{done['job_id']}/retry").status_code == 400
+
+
+# ───────── Phase 8-C: PDF 입력 (경쟁사 없이 생성, 올린 PDF 저장)
+def test_report_without_competitors_saves_pdf_sections_and_target_valuation(client):
+    started = create(client, competitors=(), interim=True)
+    assert [s["key"] for s in started["steps"]] == ["pdf", "collect", "recent", "news", "macro", "stocks", "calc", "save", "ai"]
+    assert started["steps"][0]["label"] == "PDF 읽기"
+    job = wait_done(client, started["job_id"])
+    assert job["status"] == "done", job
+    d = client.get(f"/api/reports/{job['report_id']}").json()
+    assert d["competitors"] == []
+    rows = d["results"]["comparison"]["rows"]  # 부록 D 가치평가: 분석 기업 한 곳만으로 계산
+    assert [r["corp_name"] for r in rows] == ["SK하이닉스"]
+    assert rows[0]["values"]["per"]["value"] is not None and rows[0]["values"]["pbr"]["value"] is not None
+    assert rows[0]["values"]["per"]["rank"] is None
+    assert [p["slot"] for p in d["pdfs"]] == ["annual", "interim"]
+    annual = d["pdfs"][0]
+    assert annual["split_method"] == "bookmarks" and annual["page_count"] == 8 and annual["kind"] == "annual"
+    sections = {s["key"]: s for s in annual["sections"]}
+    assert (sections["business_overview"]["page_start"], sections["business_overview"]["page_end"]) == (3, 3)
+    assert (sections["mda"]["page_start"], sections["mda"]["page_end"]) == (7, 7)
+    assert all("pages" not in s for s in annual["sections"])  # 섹션 글자는 응답에 넣지 않는다
+    with db.SessionLocal() as s:  # 글자는 DB에 쪽 번호와 함께 저장된다
+        from app.report_models import ReportPdf
+        row = s.scalar(select(ReportPdf).where(ReportPdf.report_id == job["report_id"], ReportPdf.slot == "annual"))
+        saved = {x["key"]: x for x in row.sections}
+        assert saved["sales_orders"]["pages"] == [{"page": 4, "text": "4. 매출 및 수주상황\n주요 고객 A사 비중 35%입니다."}]
+    client.delete(f"/api/reports/{job['report_id']}")
+    with db.SessionLocal() as s:
+        assert s.scalar(select(func.count()).select_from(ReportPdf)) == 0  # 리포트를 지우면 함께 지워진다
+
+
+def test_create_requires_confirmed_annual_pdf_of_same_company(client):
+    def post(**body):
+        return client.post("/api/reports", json={"corp_code": "00164779", **body})
+
+    r = post()
+    assert r.status_code == 400 and "사업보고서 PDF를 먼저" in r.json()["detail"]
+    r = post(annual_upload_id="nope")
+    assert r.status_code == 400 and "다시 올려 주세요" in r.json()["detail"]
+    r = post(annual_upload_id=fake_upload(corp_code="00126380").id)  # 다른 기업에 올린 PDF
+    assert r.status_code == 400 and "이 기업" in r.json()["detail"]
+    r = post(annual_upload_id=fake_upload("interim").id)  # 칸이 다름
+    assert r.status_code == 400
+    r = post(annual_upload_id=fake_upload(sha="x").id, interim_upload_id=fake_upload("interim", sha="x").id)
+    assert r.status_code == 400 and "같은 파일" in r.json()["detail"]
+    assert not jobs.manager.jobs and counts()["reports"] == 0
+
+
+def test_pdf_year_different_from_latest_dart_report_fails_collect_step(client):
+    old = fake_upload(base_year=THIS_YEAR - 1)
+    r = client.post("/api/reports", json={"corp_code": "00164779", "annual_upload_id": old.id})
+    job = wait_done(client, r.json()["job_id"])
+    assert job["status"] == "failed" and job["error"]["step"] == "collect"
+    assert f"올린 사업보고서({THIS_YEAR - 1})" in job["error"]["message"] and counts()["reports"] == 0
+
+
+def test_retry_keeps_uploaded_pdfs(client, monkeypatch):
+    monkeypatch.setattr(jobs, "new_fetcher", lambda c: FakeFetcher(empty=True))
+    failed = wait_done(client, create(client, competitors=())["job_id"])
+    monkeypatch.setattr(jobs, "new_fetcher", lambda c: FakeFetcher())
+    done = wait_done(client, client.post(f"/api/reports/jobs/{failed['job_id']}/retry").json()["job_id"])
+    assert done["status"] == "done"
+    assert [p["slot"] for p in client.get(f"/api/reports/{done['report_id']}").json()["pdfs"]] == ["annual"]

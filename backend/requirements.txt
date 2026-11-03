@@ -4,3 +4,5 @@ pytest==9.2.0
 python-dotenv==1.2.4
 SQLAlchemy==2.0.55
 uvicorn==0.54.0
+pdfplumber==0.11.10
+python-multipart==0.0.33

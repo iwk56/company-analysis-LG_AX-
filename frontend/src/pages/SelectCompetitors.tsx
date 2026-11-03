@@ -63,7 +63,8 @@ export default function SelectCompetitors() {
     setCreating(true)
     setError(null)
     try {
-      const job = await createReport(company.corp_code, selected.map((c) => c.corp_code))
+      // 2026-11-03부터 흐름에서 뺀 화면 (코드 유지). PDF 없이는 서버가 생성을 거절한다
+      const job = await createReport(company.corp_code, { annual: null }, selected.map((c) => c.corp_code))
       navigate(`/jobs/${job.job_id}`)
     } catch (e) {
       setError((e as ApiError).message)

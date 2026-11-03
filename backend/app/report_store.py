@@ -11,7 +11,8 @@ from .news import RETENTION_DAYS, is_expired, now_kst
 from .recent_results import RecentResults
 from .report_build import build_sections, data_as_of, source_rows, won
 from .report_models import (
-    Article, ArticleSearch, CalcResult, Comment, Company, FinancialYear, MacroSeries, RecentResult, Report, Source, StockSeries,
+    Article, ArticleSearch, CalcResult, Comment, Company, FinancialYear, MacroSeries, RecentResult, Report, ReportPdf, Source,
+    StockSeries,
 )
 
 AMOUNT_FIELDS = [f.name for f in fields(YearFinancials) if f.name != "year"]
@@ -20,7 +21,8 @@ AMOUNT_FIELDS = [f.name for f in fields(YearFinancials) if f.name != "year"]
 def save_report(session: Session, company: dict, res: CompanyFinancials, analysis: dict[int, YearAnalysis],
                 recent: RecentResults | None, recent_reason: str | None,
                 competitors: list[dict] | None = None, comparison: dict | None = None,
-                news: dict | None = None, macro: list[dict] | None = None, stocks: list[dict] | None = None) -> int:
+                news: dict | None = None, macro: list[dict] | None = None, stocks: list[dict] | None = None,
+                pdfs: list[dict] | None = None) -> int:
     """한 트랜잭션으로 저장한다. 중간에 실패하면 아무것도 남지 않는다."""
     session.merge(Company(corp_code=company["corp_code"], corp_name=company["corp_name"],
                           stock_code=company["stock_code"], industry_code=company["industry_code"],
@@ -67,6 +69,8 @@ def save_report(session: Session, company: dict, res: CompanyFinancials, analysi
             corp_code=st["corp_code"], corp_name=st["corp_name"], stock_code=st["stock_code"], is_target=st["is_target"],
             period_start=date.fromisoformat(st["start"]), period_end=date.fromisoformat(st["end"]),
             base_date=date.fromisoformat(st["base_date"]) if st["base_date"] else None, points=st["points"], notes=st["notes"]))
+    for p in pdfs or []:  # pdf_uploads.to_record 결과
+        report.pdfs.append(ReportPdf(**p))
     session.add(report)
     session.commit()
     return report.id
@@ -140,7 +144,16 @@ def get_report(session: Session, report_id: int) -> dict | None:
         "enrichments": {e.key: {"status": e.status, "by": e.by, "model": e.model, "content": e.content, "message": e.message,
                                 "warnings": e.warnings, "created_at": e.created_at.isoformat()} for e in r.enrichments},
         "comments": {c.section_key: {"content": c.content, "updated_at": c.updated_at.isoformat()} for c in r.comments},
+        "pdfs": [_pdf_view(p) for p in r.pdfs],  # 빈 목록 = PDF 기능 이전에 만든 리포트
     }
+
+
+def _pdf_view(p: ReportPdf) -> dict:
+    """올린 PDF의 확인 결과와 섹션 쪽 범위. 섹션 글자는 응답에 넣지 않는다(AI 입력은 8-D에서 DB를 직접 읽는다)."""
+    return {"slot": p.slot, "file_name": p.file_name, "sha256": p.sha256, "page_count": p.page_count, "kind": p.kind,
+            "corrected": p.corrected, "period_start": p.period_start.isoformat(), "period_end": p.period_end.isoformat(),
+            "checks": p.checks, "revenue_check": p.revenue_check, "split_method": p.split_method,
+            "sections": [{k: v for k, v in s.items() if k != "pages"} for s in p.sections]}
 
 
 def _articles_view(search: ArticleSearch | None) -> dict | None:

@@ -325,6 +325,56 @@ export interface Enrichments {
   write_page4?: Enrichment<Page4Content>
 }
 
+export type PdfSlot = 'annual' | 'interim'
+export type PdfKind = 'annual' | 'half' | 'q3' | 'q1'
+export interface PdfGuideItem { kind: PdfKind; year: number; title: string; rcept_no: string; date: string; url: string }
+export interface PdfGuide {
+  company: { corp_code: string; corp_name: string }
+  base_year: number | null // 기준 사업연도 N (최근 사업보고서)
+  annual: PdfGuideItem | null
+  interim: PdfGuideItem | null // N+1년의 최근 반기/3분기보고서
+  message: string | null
+}
+export interface PdfCheck { key: string; label: string; ok: boolean | null; message: string } // ok null = 확인 안 함
+export interface RevenueCheck { status: 'match' | 'mismatch' | 'not_found'; message: string; page: number | null }
+export interface PdfUploadResult {
+  upload_id: string | null // 거절이면 null (서버가 보관하지 않음)
+  slot: PdfSlot
+  file_name: string
+  page_count: number
+  accepted: boolean
+  reasons: string[]
+  checks: PdfCheck[]
+  kind: PdfKind | null
+  corrected: boolean
+  period_start: string | null
+  period_end: string | null
+  revenue: RevenueCheck | null // ⑤ 매출액 대조 (경고만)
+}
+export interface PdfSection {
+  key: string
+  label: string
+  found: boolean
+  title: string | null
+  page_start: number | null // PDF 뷰어 쪽 번호
+  page_end: number | null
+  chars: number
+  over_limit: boolean // AI 입력 상한(12,000자)을 넘음
+}
+export interface ReportPdf {
+  slot: PdfSlot
+  file_name: string
+  page_count: number
+  kind: PdfKind
+  corrected: boolean
+  period_start: string
+  period_end: string
+  checks: PdfCheck[]
+  revenue_check: RevenueCheck | null
+  split_method: 'bookmarks' | 'headings'
+  sections: PdfSection[]
+}
+
 export interface ReportDetail {
   id: number
   company: { corp_code: string; corp_name: string; stock_code: string; industry_name: string | null }
@@ -363,17 +413,41 @@ export interface ReportDetail {
   enrichments: Enrichments
   ai_pending: string[] // 아직 만들지 않은 공시 확인·AI 작업 (기능이 나중에 생겨 기존 리포트에 없는 것 포함)
   comments: Record<string, ReportComment>
+  pdfs?: ReportPdf[] // 빈 목록 = PDF 기능 이전에 만든 리포트
 }
 
 export const searchCompanies = (q: string) =>
   request<SearchResult>(`/api/companies/search?q=${encodeURIComponent(q)}`)
 
-export const createReport = (corpCode: string, competitors: string[]) =>
+/** 확인된 사업보고서 PDF(필수)·반기/3분기 PDF(선택)로 리포트를 만든다. 경쟁사는 화면에서 보내지 않는다(구 경쟁사 선택 화면만 사용) */
+export const createReport = (
+  corpCode: string,
+  uploads: { annual: string | null; interim?: string | null },
+  competitors: string[] = [],
+) =>
   request<Job>('/api/reports', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ corp_code: corpCode, competitors }),
+    body: JSON.stringify({
+      corp_code: corpCode,
+      annual_upload_id: uploads.annual,
+      interim_upload_id: uploads.interim ?? null,
+      competitors,
+    }),
   })
+
+export const getPdfGuide = (corpCode: string) =>
+  request<PdfGuide>(`/api/pdf/guide?corp_code=${encodeURIComponent(corpCode)}`)
+
+/** PDF를 올리면 서버가 바로 확인한다. otherUploadId: 다른 칸에 올린 PDF (같은 파일이면 거절) */
+export function uploadPdf(corpCode: string, slot: PdfSlot, file: File, otherUploadId?: string | null) {
+  const form = new FormData()
+  form.append('corp_code', corpCode)
+  form.append('slot', slot)
+  if (otherUploadId) form.append('other_upload_id', otherUploadId)
+  form.append('file', file)
+  return request<PdfUploadResult>('/api/pdf/uploads', { method: 'POST', body: form })
+}
 
 export const getJob = (jobId: string) => request<Job>(`/api/reports/jobs/${jobId}`)
 

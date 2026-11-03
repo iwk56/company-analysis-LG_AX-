@@ -33,6 +33,8 @@ async def fetch_overview(client: httpx.AsyncClient, corp_code: str) -> dict:
     return {
         "induty_code": (data.get("induty_code") or "").strip() or None,
         "corp_cls": data.get("corp_cls"),  # Y 유가증권, K 코스닥, N 코넥스, E 기타(상장폐지 등)
+        "official_name": (data.get("corp_name") or "").strip() or None,  # 정식 회사명 (PDF 표지 확인용, 예: 에스케이하이닉스(주))
+        "acc_mt": data.get("acc_mt"),  # 결산월
         "fetched_at": time.time(),
     }
 
