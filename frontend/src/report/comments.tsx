@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
 import { useBlocker } from 'react-router-dom'
 import { saveComment } from '../api'
 import type { ApiError, ReportComment } from '../api'
 import styles from '../app.module.css'
+import { useFold } from './foldData'
 import type { SectionKey } from './sectionKeys'
 
 export const MAX_COMMENT_LENGTH = 1000
@@ -67,10 +68,31 @@ export function CommentsProvider({ reportId, initial, children }: {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 
-/** 섹션 카드: 기존 카드 틀 + 맨 아래 내 코멘트란. 새 섹션도 이것으로 감싸면 같은 방식으로 코멘트가 붙는다. */
+/** 섹션 카드: 기존 카드 틀 + 맨 아래 내 코멘트란. 새 섹션도 이것으로 감싸면 같은 방식으로 코멘트가 붙는다.
+ * 부록 안에서는 접을 수 있다: 접히면 제목(h3)과 한 줄 요약만 보이고 나머지는 숨기기만 한다(CSS, 쓰던 코멘트 유지). */
 export function SectionCard({ sectionKey, children }: { sectionKey: SectionKey; children?: ReactNode }) {
+  const fold = useFold(sectionKey)
+  const hasComment = !!useContext(Ctx)?.comments[sectionKey]
+  if (!fold) {
+    return (
+      <section className={styles.card} data-section={sectionKey}>
+        {children}
+        <CommentBox sectionKey={sectionKey} />
+      </section>
+    )
+  }
+  // 제목 줄을 눌러도 펼치고 접는다 (제목 안의 링크·버튼은 제외)
+  const onClick = (e: MouseEvent<HTMLElement>) => {
+    const t = e.target as HTMLElement
+    if (t.closest('a, button')) return
+    if (t.closest('h3')?.parentElement === e.currentTarget) fold.toggle()
+  }
   return (
-    <section className={styles.card} data-section={sectionKey}>
+    <section className={`${styles.card} ${styles.foldable} ${fold.open ? '' : styles.folded}`} data-section={sectionKey} onClick={onClick}>
+      <div className={styles.foldbar}>
+        {!fold.open && hasComment && <span className={styles.hascomment}>코멘트 있음</span>}
+        <button type="button" className={styles.link} aria-expanded={fold.open} onClick={fold.toggle}>{fold.open ? '접기 ▴' : '펼치기 ▾'}</button>
+      </div>
       {children}
       <CommentBox sectionKey={sectionKey} />
     </section>

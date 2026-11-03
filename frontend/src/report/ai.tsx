@@ -37,7 +37,8 @@ export function AiBadge({ task, kind = 'write' }: { task: keyof Enrichments; kin
 
 const EXTERNAL_SUMMARY_KEYS = ['pest', 'five_forces', 'topics', 'macro', 'watch'] as const
 
-/** 섹션 맨 위 한 줄 요약 (회계 이슈는 write_accounting, 3페이지는 write_external, 4페이지는 write_page4, 나머지는 write_summaries) */
+/** 섹션 맨 위 한 줄 요약 (회계 이슈는 write_accounting, 외부 환경 섹션은 write_external, 3장 과제(tasks)는 write_page4, 나머지는 write_summaries).
+ * write_page4의 한 줄 요약은 3장 과제 맨 위에만 둔다(4장 직무별 기여에는 없음, spec F4). */
 export function Summary({ sectionKey }: { sectionKey: string }) {
   const main = useContent('write_summaries')?.summaries[sectionKey]
   const accounting = useContent('write_accounting')?.summary
@@ -45,7 +46,7 @@ export function Summary({ sectionKey }: { sectionKey: string }) {
   const page4 = useContent('write_page4')?.summary
   const ext = (EXTERNAL_SUMMARY_KEYS as readonly string[]).includes(sectionKey)
   const [task, text] = sectionKey === 'accounting' ? ['write_accounting', accounting] as const
-    : sectionKey === 'page4' ? ['write_page4', page4] as const
+    : sectionKey === 'tasks' ? ['write_page4', page4] as const
     : ext ? ['write_external', external?.[sectionKey as (typeof EXTERNAL_SUMMARY_KEYS)[number]]] as const
     : ['write_summaries', main] as const
   if (!text) return null
@@ -106,7 +107,7 @@ export function AiBanner() {
       )}
       {rows.length > 0 && pending.length > 0 && (
         <div className={styles.notice}>
-          이 리포트에는 아직 만들지 않은 AI 해석이 있습니다 (외부 환경·SWOT·4페이지 등 {pending.length}건).{' '}
+          이 리포트에는 아직 만들지 않은 AI 해석이 있습니다 (외부 환경·SWOT·과제 등 {pending.length}건).{' '}
           <button className={styles.link} onClick={rerun}>없는 것만 만들기</button>
           <div className={styles.sub}>누르면 아직 없는 작업만 AI를 호출합니다. 이미 만든 해석은 다시 만들지 않습니다.</div>
         </div>

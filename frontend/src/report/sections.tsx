@@ -20,6 +20,8 @@ import { COLORS } from './palette'
 import YearTable from './YearTable'
 import { SectionCard } from './comments'
 import { Sensitivity } from './external'
+import { JumpLink } from './fold'
+import { essayNumbers } from '../format/essayNumbers'
 
 const EOK = 1e8
 const yearsOf = (r: ReportDetail) => r.financial_years.map((y) => y.year).sort((a, b) => a - b)
@@ -47,7 +49,7 @@ export function Header({ r }: { r: ReportDetail }) {
   )
 }
 
-// ───────────────────────── 1페이지: 핵심 지표 카드
+// ───────────────────────── 1장: 핵심 지표 카드
 function Card({ label, value, signal, reason, dir, deltaText, noteKey, open, onNote }: {
   label: string
   value: Formatted
@@ -103,7 +105,7 @@ export function CoreCards({ r }: { r: ReportDetail }) {
   )
 }
 
-// ───────────────────────── 2페이지: 최근 실적 박스
+// ───────────────────────── 2장: 최근 실적 박스
 export function RecentBox({ r }: { r: ReportDetail }) {
   const rr = r.recent_results
   if (!rr) {
@@ -146,7 +148,7 @@ export function RecentBox({ r }: { r: ReportDetail }) {
   )
 }
 
-// ───────────────────────── 2페이지: 실적 추이 + 재무 수치 표
+// ───────────────────────── 부록 C: 실적 추이 + 재무 수치 표
 export function Trend({ r }: { r: ReportDetail }) {
   const years = yearsOf(r)
   const data = years.map((year) => ({
@@ -168,7 +170,7 @@ export function Trend({ r }: { r: ReportDetail }) {
   )
 }
 
-// ───────────────────────── 2페이지: 재무비율 (그룹별 표 + 선 차트)
+// ───────────────────────── 부록 C: 재무비율 (그룹별 표 + 선 차트)
 interface MetricDef { key: string; label: string; kind: MetricKind; chart: boolean }
 const GROUPS: { name: string; unit: '%' | 'x'; metrics: MetricDef[]; chartNote?: string }[] = [
   { name: '수익성', unit: '%', metrics: [
@@ -223,7 +225,7 @@ export function Ratios({ r }: { r: ReportDetail }) {
   )
 }
 
-// ───────────────────────── 2페이지: 듀퐁
+// ───────────────────────── 부록 C: 듀퐁
 export function Dupont({ r }: { r: ReportDetail }) {
   const years = yearsOf(r)
   const d = (y: number) => r.results.dupont[String(y)]
@@ -249,7 +251,7 @@ export function Dupont({ r }: { r: ReportDetail }) {
   )
 }
 
-// ───────────────────────── 2페이지: 현금흐름
+// ───────────────────────── 부록 C: 현금흐름
 export function Cashflow({ r }: { r: ReportDetail }) {
   const years = yearsOf(r)
   const data = years.map((y) => ({
@@ -270,7 +272,7 @@ export function Cashflow({ r }: { r: ReportDetail }) {
   )
 }
 
-// ───────────────────────── 2페이지: 경쟁사 비교 (표의 열은 응답의 columns를 보고 그린다)
+// ───────────────────────── 부록 E: 경쟁사 비교 (표의 열은 응답의 columns를 보고 그린다)
 const AVG_MARK = { above: '▲', below: '▼', same: '＝' } as const
 const AVG_TITLE = { above: '평균보다 높음', below: '평균보다 낮음', same: '평균과 같음' } as const
 
@@ -308,7 +310,7 @@ export function Competitors({ r }: { r: ReportDetail }) {
     <SectionCard sectionKey="competitors">
       <h3>경쟁사 비교 <span className={styles.unit}>({comp.base_year} 사업연도 기준)</span></h3>
       <Summary sectionKey="competitors" />
-      <p><b>{comp.position.text}</b></p>
+      <p className={styles.sub}>업계 내 위치 한 줄과 시가총액 순위는 <JumpLink to="position">1장 업계 위치</JumpLink>에 있습니다.</p>
       <div className={styles.tablescroll}>
       <table className={styles.table}>
         <thead>
@@ -354,7 +356,7 @@ export function Competitors({ r }: { r: ReportDetail }) {
   )
 }
 
-/** 비교표의 시가총액·PER·PBR 설명 (5-B 이후 리포트에만) */
+/** 비교표의 시가총액 설명 (5-B 이후 리포트에만). PER·PBR 설명은 부록 D(Valuation)에 있다 */
 function MarketNotes({ r }: { r: ReportDetail }) {
   const comp = r.results.comparison
   if (!comp || !comp.columns.some((c) => c.key === 'market_cap')) return null
@@ -363,18 +365,62 @@ function MarketNotes({ r }: { r: ReportDetail }) {
     <div className={styles.footnote}>
       <p>
         시가총액은 <b>보통주 기준</b>입니다(공공데이터포털 금융위원회_주식시세정보, 기준일 {dates.length ? dates.join(', ') : '자료 없음'}).
-        {' '}우선주가 있는 기업은 포털 시가총액보다 작게 나올 수 있습니다.
+        {' '}우선주가 있는 기업은 포털 시가총액보다 작게 나올 수 있습니다. PER·PBR 계산 방법은 <JumpLink to="stocks">부록 D 가치평가</JumpLink>에 있습니다.
       </p>
-      <p>
-        PER = 시가총액 ÷ {comp.base_year} 지배주주 순이익, PBR = 시가총액 ÷ {comp.base_year}말 지배주주 자본(계산은 코드).
-        {' '}포털·증권사 앱은 보통 최근 4개 분기 이익을 써서 값이 다를 수 있습니다.
-      </p>
-      <div>설명: PER <InfoNote noteKey="per" /> · PBR <InfoNote noteKey="pbr" /></div>
     </div>
   )
 }
 
-// ───────────────────────── 2페이지: 주가 흐름 비교 (기준일 = 100)
+/** 부록 D 맨 위: 분석 기업의 시가총액·PER·PBR 한 줄 (경쟁사 비교표의 같은 값) + PER·PBR 설명 */
+function Valuation({ r }: { r: ReportDetail }) {
+  const comp = r.results.comparison
+  const row = comp?.rows.find((x) => x.is_target)
+  const cols = comp?.columns.filter((c) => ['market_cap', 'per', 'pbr'].includes(c.key)) ?? []
+  if (!comp || !row || cols.length === 0) return <p className={styles.muted}>시가총액·PER·PBR: 시세 없음</p>
+  const show = (c: ComparisonColumn) => {
+    const cell = row.values[c.key]
+    return c.key === 'market_cap' ? formatWonCard(cell?.value) : cellValue(c, cell?.value ?? null, cell?.na_reason ?? null)
+  }
+  return (
+    <>
+      <p>
+        <b>{row.corp_name}</b>{' '}
+        {cols.map((c, i) => <span key={c.key}>{i > 0 && ' · '}{c.label} <b><Num f={show(c)} /></b>{c.key !== 'market_cap' && <> <InfoNote noteKey={c.key} /></>}</span>)}
+        {' '}<span className={styles.sub}>(기준일 {row.market_as_of ?? '자료 없음'}, 보통주 기준)</span>
+      </p>
+      <p className={styles.footnote}>
+        PER = 시가총액 ÷ {comp.base_year} 지배주주 순이익, PBR = 시가총액 ÷ {comp.base_year}말 지배주주 자본(계산은 코드). 경쟁사 값은 <JumpLink to="competitors">부록 E 경쟁사 비교</JumpLink>.
+        {' '}포털·증권사 앱은 보통 최근 4개 분기 이익을 써서 값이 다를 수 있습니다.
+      </p>
+    </>
+  )
+}
+
+// ───────────────────────── 1장: 업계 위치 (경쟁사 비교에서 계산한 값을 그대로, 새 계산 없음, 코멘트란 없음)
+export function Position({ r }: { r: ReportDetail }) {
+  const comp = r.results.comparison
+  const row = comp?.rows.find((x) => x.is_target)
+  const cap = row?.values.market_cap
+  return (
+    <section className={styles.card} data-section="position">
+      <h3>업계 위치 {comp && <span className={styles.unit}>({comp.base_year} 사업연도 · 비교 기업 평균 대비)</span>}</h3>
+      {!comp ? <p className={styles.muted}>경쟁사 없이 만들어진 리포트입니다.</p> : (
+        <>
+          <p>
+            {cap && cap.rank !== null ? (
+              <>시가총액 <b><Num f={formatWonCard(cap.value)} /></b> · 비교 기업 {comp.ranked_counts.market_cap}곳 중 <b>{cap.rank}위</b>{' '}
+                <span className={styles.sub}>(기준일 {row?.market_as_of ?? '자료 없음'}, 보통주 기준)</span></>
+            ) : <>시가총액 순위: <span className={styles.muted}>시세 없음</span></>}
+          </p>
+          <p><b>{comp.position.text}</b></p>
+          <p className={styles.sub}>비교표·점 그래프: <JumpLink to="competitors">부록 E 경쟁사 비교</JumpLink></p>
+        </>
+      )}
+    </section>
+  )
+}
+
+// ───────────────────────── 부록 D: 주가 흐름 비교 (기준일 = 100)
 function stockRows(list: StockSeries[]) {
   const byDate = new Map<string, Record<string, number | string | null>>()
   for (const s of list) {
@@ -394,6 +440,7 @@ export function Stocks({ r }: { r: ReportDetail }) {
   return (
     <SectionCard sectionKey="stocks">
       <h3>주가 흐름 비교 <span className={styles.unit}>(최근 1년, 기준일 종가 = 100)</span></h3>
+      <Valuation r={r} />
       {list === null ? (
         <p className={styles.muted}>이 리포트는 주가 수집 기능이 생기기 전에 만들어져 자료가 없습니다. 리포트를 다시 만들면 표시됩니다.</p>
       ) : (
@@ -417,7 +464,7 @@ export function Stocks({ r }: { r: ReportDetail }) {
             })}
           </ul>
           <p className={styles.footnote}>
-            {marks.length > 0 && <>보라색 세로 점선 ①②③은 3페이지 공시 주제의 공시 날짜입니다(휴일이면 다음 거래일). </>}
+            {marks.length > 0 && <>보라색 세로 점선 ①②③은 <JumpLink to="topics">2장 공시 주제</JumpLink>의 공시 날짜입니다(휴일이면 다음 거래일). </>}
             수정주가가 아니라 액면분할·배당 등이 반영되지 않았을 수 있습니다. 기준일은 리포트 생성일 1년 전 이후 첫 거래일이며, 보통주 종가 기준입니다.
             {' '}출처: <a href="https://www.data.go.kr/data/15094808/openapi.do" target="_blank" rel="noreferrer">공공데이터포털 금융위원회_주식시세정보</a> (영업일 1~2일 늦게 반영)
           </p>
@@ -468,7 +515,7 @@ function NetVsOperating({ r }: { r: ReportDetail }) {
   )
 }
 
-// ───────────────────────── 1페이지: 기업 개요 + 직원·연구개발비
+// ───────────────────────── 1장: 기업 개요 + 직원·연구개발비
 function Fact({ label, value, extra }: { label: string; value: Formatted; extra?: React.ReactNode }) {
   return (
     <div className={styles.fact}>
@@ -506,7 +553,7 @@ export function Overview({ r }: { r: ReportDetail }) {
   )
 }
 
-// ───────────────────────── 1페이지: 사업부문 비중 + BCG 해석
+// ───────────────────────── 1장: 사업부문 비중 + BCG 해석
 export function Segments({ r }: { r: ReportDetail }) {
   const seg = useContent('extract_segments')
   const notice = useNotice('extract_segments')
@@ -567,7 +614,7 @@ export function Sources({ r }: { r: ReportDetail }) {
   )
 }
 
-// ───────────────────────── 3페이지: 환율·기준금리
+// ───────────────────────── 부록 A: 환율·기준금리
 const MACRO_VIEW: Record<string, { format: (v: number) => Formatted; color: string; step: boolean }> = {
   usd_krw: { format: formatExchangeRate, color: COLORS[0], step: false },
   base_rate: { format: formatBaseRate, color: COLORS[1], step: true },
@@ -609,7 +656,7 @@ export function Macro({ r }: { r: ReportDetail }) {
   )
 }
 
-// ───────────────────────── 3페이지: 네이버 검색결과 (참고 목록, AI에 넣지 않음)
+// ───────────────────────── 2장 마지막: 네이버 검색결과 (참고 목록, AI에 넣지 않음)
 const NAVER_API_HUB_URL = 'https://www.ncloud.com/product/applicationService/NAVERAPIHUB'
 
 function NaverText({ raw }: { raw: string }) {
@@ -668,5 +715,30 @@ export function Articles({ r }: { r: ReportDetail }) {
         <span className={styles.footnote}>네이버™는 NAVER®의 등록상표입니다.</span>
       </p>
     </section>
+  )
+}
+
+// ───────────────────────── 4장: 자기소개서에 쓸 숫자 모음 (코드가 저장된 값에서 고름, AI 없음 → 한 줄 요약 없음)
+export function EssayNumbers({ r }: { r: ReportDetail }) {
+  const { lines, excluded } = essayNumbers(r)
+  return (
+    <SectionCard sectionKey="essay_numbers">
+      <h3>자기소개서에 쓸 숫자 모음 <span className={styles.unit}>(이미 계산·검증된 값, AI 없음)</span></h3>
+      {lines.length === 0 ? <p className={styles.muted}>쓸 수 있는 숫자가 없습니다</p> : (
+        <ul className={styles.essaylist}>
+          {lines.map((l) => (
+            <li key={l.key}>
+              {l.lead} <b><Num f={l.value} /></b>{l.tail}
+              <span className={styles.sub}>
+                {' '}· {l.basis ? `${l.basis} 기준 · ` : ''}
+                {l.source ? <a href={l.source.url} target="_blank" rel="noreferrer">{l.source.label}</a> : '출처 없음'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {excluded.length > 0 && <p className={styles.footnote}>제외: {excluded.map((x) => `${x.label}(${x.reason})`).join(', ')}</p>}
+      <p className={styles.footnote}>값과 숫자 표시는 다른 섹션과 같습니다. 해석·평가 표현은 넣지 않았으니 문장은 직접 쓰세요.</p>
+    </SectionCard>
   )
 }

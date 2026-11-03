@@ -1,4 +1,4 @@
-// 2페이지 회계 이슈 체크리스트: 감사의견·계속기업 불확실성·정정공시·특수관계자 거래 (이상 없음 / 확인 필요 / 확인 불가)
+// 부록 C 회계 이슈 체크리스트: 감사의견·계속기업 불확실성·정정공시·특수관계자 거래 (이상 없음 / 확인 필요 / 확인 불가)
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Enrichment, ReportDetail, TextAmounts, Verdict } from '../api'

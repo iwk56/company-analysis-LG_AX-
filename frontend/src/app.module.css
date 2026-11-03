@@ -112,7 +112,7 @@
 .tablescroll { overflow-x: auto; }
 .tablescroll .table th, .tablescroll .table td { white-space: nowrap; }
 
-/* 7-B 외부 환경·SWOT·4페이지 */
+/* 7-B 외부 환경·SWOT·과제·직무별 기여 */
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 8px 0; }
 .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 8px 0; }
 .box { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
@@ -130,7 +130,22 @@
 .forces th, .forces td:nth-child(-n+2) { white-space: nowrap; }
 .forces td:first-child { width: 8em; }
 
-/* ───────── 1페이지 디자인 (docs/design.md): 리서치 리포트 + 대시보드. .p1 안에만 적용 ───────── */
+/* 8-B 재구성: 4장 직무별 기여 표·숫자 모음, 부록 접힘 */
+.tablescroll .roles th, .tablescroll .roles td { white-space: normal; } /* 직무 4열은 줄바꿈해서 한 화면에 */
+.roles td { min-width: 10em; vertical-align: top; font-size: 0.9rem; }
+.roles th:not(:first-child) { width: 21%; }
+.essaylist { margin: 6px 0; padding-left: 18px; }
+.essaylist li { margin: 4px 0; }
+.appendixbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; align-items: baseline; margin: 0 0 8px; }
+.appgroup { font-size: 0.95rem; color: var(--sub); margin: 18px 0 8px; }
+.foldbar { float: right; display: flex; gap: 10px; align-items: baseline; font-size: 0.85rem; margin-left: 12px; }
+.foldable > h3 { cursor: pointer; }
+.hascomment { color: var(--accent); font-size: 0.78rem; font-weight: 600; }
+/* 접힘: 제목·한 줄 요약만 보이고 나머지는 숨기기만 한다 (내용·쓰던 코멘트는 그대로 남음) */
+.folded > :not(h3):not(.oneline):not(.foldbar) { display: none; }
+.folded { padding-bottom: 10px; }
+
+/* ───────── 1장 디자인 (docs/design.md): 리서치 리포트 + 대시보드. .p1 안에만 적용 ───────── */
 .p1 { background: var(--card); border: 1px solid var(--line); padding: 28px 36px 12px; margin-bottom: 24px; counter-reset: sec;
   --serif: 'Noto Serif KR', 'Nanum Myeongjo', AppleMyungjo, Batang, serif; --tint: #f3f4f6; }
 

@@ -169,7 +169,7 @@ const OTHER_COLORS = [COLORS[0], COLORS[2], COLORS[3], '#64748b'] // 분석 기�
 export function StockIndexChart({ data, lines, marks = [] }: {
   data: Row[]
   lines: { key: string; name: string; isTarget: boolean }[]
-  marks?: { date: string; label: string }[] // 3페이지 공시 주제 날짜 (주제 번호)
+  marks?: { date: string; label: string }[] // 2장 공시 주제 날짜 (주제 번호)
 }) {
   const snapped = snapMarks(data.map((r) => String(r.date)), marks)
   const values = data.flatMap((r) => lines.map((l) => r[l.key])).filter((v): v is number => typeof v === 'number')
