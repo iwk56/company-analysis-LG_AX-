@@ -12,7 +12,8 @@ from .corp_codes import load_listed_corps
 from .dart import DartError
 from .db import get_session
 from .industry import is_financial
-from .jobs import manager
+from .jobs import collect_news, manager
+from .news import NewsError
 from .ksic import industry_name
 from .report_models import Report
 
@@ -141,6 +142,26 @@ async def run_ai(report_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=409, detail="이 리포트의 AI 해석을 이미 만드는 중입니다. 잠시 뒤 다시 확인해 주세요")
     session.expire_all()
     return {"enrichments": report_store.get_report(session, report_id)["enrichments"]}
+
+
+@router.post("/{report_id}/articles/refresh")
+async def refresh_articles(report_id: int, session: Session = Depends(get_session)):
+    """[다시 불러오기]: 보관 기간(21일)이 지나 지운 기사를 네이버에서 새로 받는다. 끝나면 기사 목록을 돌려준다."""
+    detail = report_store.get_report(session, report_id)  # 보관 기간이 지난 기사는 여기서 지워진다
+    if detail is None:
+        raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다")
+    if detail["articles"] is None:
+        raise HTTPException(status_code=409, detail="기사 수집 기능이 생기기 전에 만든 리포트입니다. 리포트를 다시 만들어 주세요")
+    if not detail["articles"]["expired"]:
+        raise HTTPException(status_code=409, detail="기사 보관 기간이 아직 지나지 않았습니다")
+    try:
+        async with httpx.AsyncClient() as client:
+            news = await collect_news(client, detail["company"]["corp_name"])
+    except NewsError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    report_store.replace_articles(session, report_id, news)
+    session.expire_all()
+    return {"articles": report_store.get_report(session, report_id)["articles"]}
 
 
 @router.delete("/{report_id}")

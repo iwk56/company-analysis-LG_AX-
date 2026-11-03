@@ -146,18 +146,21 @@ export interface Comparison {
   rank_rule: string
 }
 
+/** 네이버 검색결과 그대로 (검색어 강조 <b>와 HTML 문자가 들어 있음, format/naverText로 표시) */
 export interface ArticleItem {
   title: string
   summary: string
   link: string
   published_at: string
 }
-/** null = 기사 수집 기능이 생기기 전에 만든 리포트, items가 비면 최근 3개월 기사 없음 */
+/** null = 기사 수집 기능이 생기기 전에 만든 리포트, items가 비면 최근 3개월 기사 없음 (expired면 보관 기간 21일이 지나 지움) */
 export interface ArticleList {
   query: string
   collected_at: string
   period_start: string
   period_end: string
+  expired: boolean
+  expires_at: string
   items: ArticleItem[]
 }
 export interface MacroSeries {
@@ -348,4 +351,6 @@ export const saveComment = (reportId: number, sectionKey: string, content: strin
 export const retryJob = (jobId: string) => request<Job>(`/api/reports/jobs/${jobId}/retry`, { method: 'POST' })
 
 /** 공시 확인·AI 작업 중 아직 없거나 실패한 것만 실행한다 (이미 만든 해석은 다시 만들지 않는다) */
+export const refreshArticles = (reportId: number) =>
+  request<{ articles: ArticleList }>(`/api/reports/${reportId}/articles/refresh`, { method: 'POST' })
 export const runAi = (reportId: number) => request<{ enrichments: Enrichments }>(`/api/reports/${reportId}/ai`, { method: 'POST' })

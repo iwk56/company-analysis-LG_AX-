@@ -1,12 +1,13 @@
 """리포트 저장·조회·삭제. 생성이 끝까지 성공했을 때만 save_report를 부른다(실패한 리포트는 저장하지 않음)."""
 from dataclasses import fields
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .calc.models import YearAnalysis, YearFinancials
 from .fin_collect import CompanyFinancials
+from .news import RETENTION_DAYS, is_expired, now_kst
 from .recent_results import RecentResults
 from .report_build import build_sections, data_as_of, source_rows, won
 from .report_models import (
@@ -80,7 +81,31 @@ def list_reports(session: Session, q: str | None = None) -> list[dict]:
              "base_year": r.base_year, "competitor_count": len(r.competitors)} for r, c in session.execute(stmt)]
 
 
+def purge_expired_articles(session: Session, now: datetime | None = None) -> int:
+    """수집 후 21일이 지난 기사를 지운다 (NAVER 검색 API 약관). 검색 기록(검색어·수집일)은 남겨 '보관 기간 지남'을 보여준다. 지운 건수."""
+    cutoff = (now or now_kst()) - timedelta(days=RETENTION_DAYS)
+    expired_ids = select(ArticleSearch.id).where(ArticleSearch.collected_at <= cutoff)
+    n = session.execute(delete(Article).where(Article.search_id.in_(expired_ids))).rowcount
+    session.commit()
+    return n
+
+
+def replace_articles(session: Session, report_id: int, news: dict) -> bool:
+    """[다시 불러오기]: 리포트의 기사 검색 기록과 기사를 새로 받은 것으로 바꾼다. 리포트가 없으면 False."""
+    report = session.get(Report, report_id)
+    if report is None:
+        return False
+    report.article_search = None
+    session.flush()
+    report.article_search = ArticleSearch(
+        query=news["query"], collected_at=news["collected_at"], period_start=news["period_start"],
+        period_end=news["period_end"], articles=[Article(**a) for a in news["articles"]])
+    session.commit()
+    return True
+
+
 def get_report(session: Session, report_id: int) -> dict | None:
+    purge_expired_articles(session)  # 보관 기간이 지난 기사는 보여주기 전에 지운다
     r = session.get(Report, report_id)
     if r is None:
         return None
@@ -119,12 +144,14 @@ def get_report(session: Session, report_id: int) -> dict | None:
 
 
 def _articles_view(search: ArticleSearch | None) -> dict | None:
-    """None = 기사 수집 기능 이전에 만든 리포트. 기사가 0건이면 items가 빈 목록."""
+    """None = 기사 수집 기능 이전에 만든 리포트. 기사가 0건이면 items가 빈 목록, expired면 보관 기간(21일)이 지나 지운 것."""
     if search is None:
         return None
+    expired = is_expired(search.collected_at, now_kst())
     return {"query": search.query, "collected_at": search.collected_at.isoformat(),
             "period_start": search.period_start.isoformat(), "period_end": search.period_end.isoformat(),
-            "items": [{"title": a.title, "summary": a.summary, "link": a.link, "published_at": a.published_at.isoformat()}
+            "expired": expired, "expires_at": (search.collected_at + timedelta(days=RETENTION_DAYS)).isoformat(),
+            "items": [] if expired else [{"title": a.title, "summary": a.summary, "link": a.link, "published_at": a.published_at.isoformat()}
                       for a in search.articles]}
 
 

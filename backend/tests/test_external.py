@@ -52,9 +52,27 @@ def test_parse_items_filters_dedupes_and_sorts():
         item("미래 날짜", "http://a/7", "Tue, 03 Nov 2026 07:00:00 +0900"),
     ]
     out = news.parse_items(items, TODAY)
-    assert [a["title"] for a in out] == ["가장 최신", "SK하이닉스 실적", "다른 기사"]
+    assert [a["title"] for a in out] == ["가장 최신", "<b>SK하이닉스</b> 실적", "다른 기사"]  # 제목은 받은 그대로
     assert out[1]["link"] == "http://orig/2"  # 언론사 원문 링크 우선
     assert out[0]["published_at"] == datetime(2026, 11, 2, 7, 0)
+
+
+def test_parse_items_keeps_text_as_received():
+    """약관(가공 없이 노출): 검색어 강조 <b>와 HTML 문자를 지우지 않고 저장한다. 화면이 안전하게 표시한다."""
+    out = news.parse_items([item("&quot;HBM&quot; <b>SK하이닉스</b>", "http://a/1", "Mon, 02 Nov 2026 07:00:00 +0900",
+                                 desc="<b>SK하이닉스</b> 투자 &amp; 확대")], TODAY)
+    assert out[0]["title"] == "&quot;HBM&quot; <b>SK하이닉스</b>"
+    assert out[0]["summary"] == "<b>SK하이닉스</b> 투자 &amp; 확대"
+
+
+def test_parse_items_skips_title_with_only_tags():
+    assert news.parse_items([item("<b></b>", "http://a/1", "Mon, 02 Nov 2026 07:00:00 +0900")], TODAY) == []
+
+
+def test_is_expired_after_21_days():
+    t = datetime(2026, 11, 2, 9, 0)
+    assert not news.is_expired(t, datetime(2026, 11, 23, 8, 59))
+    assert news.is_expired(t, datetime(2026, 11, 23, 9, 0))
 
 
 def test_parse_items_limits_to_30():
@@ -287,3 +305,98 @@ def test_delete_report_removes_articles_and_macro(api, monkeypatch):
     from app.report_models import Article, ArticleSearch, MacroSeries
     with db.SessionLocal() as s:
         assert [s.query(m).count() for m in (Article, ArticleSearch, MacroSeries)] == [0, 0, 0]
+
+
+# ───────────────────────── 보관 기간(21일)과 다시 불러오기 (NAVER 검색 API 약관)
+ARTS = [{"title": "<b>기사</b> A", "summary": "요약 &amp; A", "link": "http://a/1", "published_at": datetime(2026, 11, 1, 9, 0)}]
+
+
+def age_articles(days: int) -> None:
+    """리포트의 기사 수집일을 days일 전으로 옮긴다."""
+    from datetime import timedelta
+    from app.report_models import ArticleSearch
+    with db.SessionLocal() as s:
+        for row in s.query(ArticleSearch):
+            row.collected_at = news.now_kst() - timedelta(days=days)
+        s.commit()
+
+
+def article_count() -> int:
+    from app.report_models import Article
+    with db.SessionLocal() as s:
+        return s.query(Article).count()
+
+
+def test_articles_within_21_days_are_kept(api, monkeypatch):
+    patch_external(monkeypatch, ARTS)
+    rid = create_and_wait(api)["report_id"]
+    age_articles(20)
+    d = api.get(f"/api/reports/{rid}").json()["articles"]
+    assert d["expired"] is False and len(d["items"]) == 1 and article_count() == 1
+    assert d["items"][0]["title"] == "<b>기사</b> A"  # 받은 그대로
+
+
+def test_expired_articles_are_deleted_but_search_record_kept(api, monkeypatch):
+    patch_external(monkeypatch, ARTS)
+    rid = create_and_wait(api)["report_id"]
+    age_articles(22)
+    d = api.get(f"/api/reports/{rid}").json()["articles"]
+    assert d is not None and d["expired"] is True and d["items"] == []  # '수집 기능 이전'(None)과 구분
+    assert article_count() == 0  # 실제로 지워졌다
+
+
+def test_purge_runs_without_opening_report(api, monkeypatch):
+    patch_external(monkeypatch, ARTS)
+    create_and_wait(api)
+    age_articles(21)
+    main.purge_articles_once()  # 서버 시작 시·1시간마다 부르는 함수
+    assert article_count() == 0
+
+
+def test_refresh_replaces_expired_articles(api, monkeypatch):
+    seen = patch_external(monkeypatch, ARTS)
+    rid = create_and_wait(api)["report_id"]
+    age_articles(22)
+    new = [{"title": "새 기사", "summary": "새 요약", "link": "http://a/9", "published_at": datetime(2026, 11, 3, 9, 0)}]
+
+    async def fresh(_client, query, today=None):
+        seen["refresh_query"] = query
+        return new
+
+    monkeypatch.setattr(jobs, "fetch_news", fresh)
+    res = api.post(f"/api/reports/{rid}/articles/refresh")
+    assert res.status_code == 200
+    d = res.json()["articles"]
+    assert seen["refresh_query"] == "SK하이닉스" and d["expired"] is False and [a["title"] for a in d["items"]] == ["새 기사"]
+    assert api.get(f"/api/reports/{rid}").json()["articles"]["items"][0]["link"] == "http://a/9"
+
+
+def test_refresh_refused_while_not_expired(api, monkeypatch):
+    patch_external(monkeypatch, ARTS)
+    rid = create_and_wait(api)["report_id"]
+    assert api.post(f"/api/reports/{rid}/articles/refresh").status_code == 409
+
+
+def test_refresh_refused_for_old_report_and_missing_report(api, monkeypatch):
+    patch_external(monkeypatch, ARTS)
+    rid = create_and_wait(api)["report_id"]
+    with db.SessionLocal() as s:
+        from app.report_models import ArticleSearch
+        s.query(ArticleSearch).delete()
+        s.commit()
+    assert api.post(f"/api/reports/{rid}/articles/refresh").status_code == 409
+    assert api.post("/api/reports/9999/articles/refresh").status_code == 404
+
+
+def test_refresh_failure_keeps_expired_state(api, monkeypatch):
+    patch_external(monkeypatch, ARTS)
+    rid = create_and_wait(api)["report_id"]
+    age_articles(22)
+
+    async def boom(_client, query, today=None):
+        raise news.NewsError("NAVER API HUB 하루 호출 한도를 넘었습니다")
+
+    monkeypatch.setattr(jobs, "fetch_news", boom)
+    res = api.post(f"/api/reports/{rid}/articles/refresh")
+    assert res.status_code == 502 and "한도" in res.json()["detail"]
+    assert api.get(f"/api/reports/{rid}").json()["articles"]["expired"] is True

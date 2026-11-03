@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import httpx
 from fastapi import FastAPI, HTTPException, Query
 
-from . import company_cache, db
+from . import company_cache, db, report_store
 from .ksic import industry_name
 from .corp_codes import load_listed_corps, search_listed
 from .dart import DartError
@@ -18,13 +18,36 @@ from .reports_api import router as reports_router
 log = logging.getLogger("uvicorn.error")
 
 
+PURGE_INTERVAL_SECONDS = 3600
+
+
+def purge_articles_once() -> None:
+    """수집 후 21일이 지난 네이버 기사를 지운다 (NAVER 검색 API 약관). 실패해도 서버는 계속 돈다."""
+    try:
+        with db.SessionLocal() as session:
+            n = report_store.purge_expired_articles(session)
+        if n:
+            log.info("보관 기간(21일)이 지난 기사 %d건을 지웠습니다", n)
+    except Exception:
+        log.exception("보관 기간이 지난 기사를 지우지 못했습니다")
+
+
+async def _purge_articles_loop() -> None:
+    while True:
+        await asyncio.sleep(PURGE_INTERVAL_SECONDS)
+        purge_articles_once()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # 서버를 켤 때 비어 있는 키 이름만 경고한다 (외부 호출은 하지 않는다)
     for warning in startup_warnings(os.environ):
         log.warning(warning)
     db.ensure_init()  # SQLite 파일과 테이블 준비 (backend/data/report.db)
+    purge_articles_once()  # 켤 때 한 번, 그 뒤 1시간마다 (리포트를 열 때도 지운다)
+    purger = asyncio.create_task(_purge_articles_loop())
     yield
+    purger.cancel()
 
 
 app = FastAPI(title="기업분석 리포트 API", lifespan=lifespan)

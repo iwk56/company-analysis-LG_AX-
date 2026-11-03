@@ -77,6 +77,8 @@
 .articles { list-style: none; margin: 8px 0; padding: 0; }
 .articles li { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .articles li:last-child { border-bottom: none; }
+.naverbi { display: flex; align-items: center; gap: 10px; margin: 8px 0 0; }
+.naverbi img { display: block; }
 .summary { margin: 2px 0 0; color: var(--sub); font-size: 0.85rem; }
 
 /* AI 해석·추출 (Phase 6) */

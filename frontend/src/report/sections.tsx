@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import styles from '../app.module.css'
-import type { ComparisonCell, ComparisonColumn, FinancialYear, MacroSeries, MetricMap, ReportDetail, StockSeries } from '../api'
+import { refreshArticles } from '../api'
+import type { ApiError, ArticleList, ComparisonCell, ComparisonColumn, FinancialYear, MacroSeries, MetricMap, ReportDetail, StockSeries } from '../api'
+import naverLogo from '../assets/naver-openapi-powered.png'
 import { ARROW, difference, direction, relativeChange } from '../format/delta'
 import type { Direction } from '../format/delta'
 import type { Formatted, MetricKind } from '../format/number'
@@ -9,6 +11,7 @@ import {
   formatPrice, formatWonMan, formatWonTable, formatYears, noData,
 } from '../format/number'
 import { dateText } from '../format/date'
+import { naverParts } from '../format/naverText'
 import { Num, SignalBadge } from '../ui'
 import { AiBadge, InfoNote, NoteButton, NotePanel, Summary } from './ai'
 import { evidenceFor, useContent, useNotice } from './aiData'
@@ -601,32 +604,63 @@ export function Macro({ r }: { r: ReportDetail }) {
   )
 }
 
-// ───────────────────────── 3페이지: 최근 기사
+// ───────────────────────── 3페이지: 네이버 검색결과 (참고 목록, AI에 넣지 않음)
+const NAVER_API_HUB_URL = 'https://www.ncloud.com/product/applicationService/NAVERAPIHUB'
+
+function NaverText({ raw }: { raw: string }) {
+  return <>{naverParts(raw).map((p, i) => (p.bold ? <b key={i}>{p.text}</b> : <span key={i}>{p.text}</span>))}</>
+}
+
 export function Articles({ r }: { r: ReportDetail }) {
-  const a = r.articles
+  const [a, setA] = useState<ArticleList | null>(r.articles)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const reload = () => {
+    setLoading(true)
+    setError(null)
+    refreshArticles(r.id)
+      .then((res) => setA(res.articles))
+      .catch((e: ApiError) => setError(e.message))
+      .finally(() => setLoading(false))
+  }
   return (
     <SectionCard sectionKey="articles">
-      <h3>최근 기사 {a && <span className={styles.unit}>({a.period_start} ~ {a.period_end}, 최대 30건)</span>}</h3>
+      <h3>네이버 검색결과 <span className={styles.unit}>(참고 목록{a && !a.expired && `, ${a.period_start} ~ ${a.period_end}, 최대 30건`})</span></h3>
       {a === null ? (
         <p className={styles.muted}>이 리포트는 기사 수집 기능이 생기기 전에 만들어져 자료가 없습니다. 리포트를 다시 만들면 표시됩니다.</p>
-      ) : a.items.length === 0 ? (
-        <p className={styles.muted}>최근 3개월 기사 없음</p>
+      ) : a.expired ? (
+        <p className={styles.muted}>
+          수집한 지 21일이 지나 기사를 지웠습니다 (네이버 검색 API 약관의 보관 기간).{' '}
+          <button className={styles.link} disabled={loading} onClick={reload}>{loading ? '불러오는 중…' : '다시 불러오기'}</button>
+          {error && <span className={styles.error}> {error}</span>}
+        </p>
       ) : (
         <>
-          <ul className={styles.articles}>
-            {a.items.map((it) => (
-              <li key={it.link}>
-                <a href={it.link} target="_blank" rel="noreferrer">{it.title}</a>
-                <span className={styles.sub}> {dateText(it.published_at)}</span>
-                {it.summary && <p className={styles.summary}>{it.summary}</p>}
-              </li>
-            ))}
-          </ul>
           <p className={styles.footnote}>
-            출처: NAVER API HUB 뉴스 검색 (검색어 “{a.query}”, 수집일 {dateText(a.collected_at)}). 제목·요약문·링크·날짜만 제공되며 본문 전체는 받지 않습니다.
+            회사명 “{a.query}”의 네이버 뉴스 검색결과를 받은 그대로 보여주는 참고 목록입니다. 리포트의 AI 해석에는 쓰지 않습니다.
+            수집일 {dateText(a.collected_at)}, 약관에 따라 {dateText(a.expires_at)}에 지웁니다.
           </p>
+          {a.items.length === 0 ? (
+            <p className={styles.muted}>최근 3개월 기사 없음</p>
+          ) : (
+            <ul className={styles.articles}>
+              {a.items.map((it) => (
+                <li key={it.link}>
+                  <a href={it.link} target="_blank" rel="noreferrer"><NaverText raw={it.title} /></a>
+                  <span className={styles.sub}> {dateText(it.published_at)}</span>
+                  {it.summary && <p className={styles.summary}><NaverText raw={it.summary} /></p>}
+                </li>
+              ))}
+            </ul>
+          )}
         </>
       )}
+      <p className={styles.naverbi}>
+        <a href={NAVER_API_HUB_URL} target="_blank" rel="noreferrer">
+          <img src={naverLogo} alt="NAVER 오픈 API" height={14} />
+        </a>
+        <span className={styles.footnote}>네이버™는 NAVER®의 등록상표입니다.</span>
+      </p>
     </SectionCard>
   )
 }

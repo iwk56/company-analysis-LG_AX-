@@ -6,7 +6,6 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
 
 import httpx
 
@@ -18,7 +17,7 @@ from .ecos import EcosError, fetch_macro
 from .enrich import enrich_report
 from .fin_collect import NoFinancialsError, collect_company, to_year_list
 from .fin_fetch import FinancialsFetcher
-from .news import KST, MONTHS, NewsError, fetch_news, months_ago
+from .news import MONTHS, NewsError, fetch_news, months_ago, now_kst
 from .recent_results import collect_recent
 from .report_store import save_report
 from .stocks import StockError, fetch_stocks, latest_market
@@ -31,6 +30,14 @@ MAX_KEPT_JOBS = 50
 
 def new_fetcher(client: httpx.AsyncClient) -> FinancialsFetcher:  # 테스트에서 바꿀 수 있게 따로 둔다
     return FinancialsFetcher(client)
+
+
+async def collect_news(client: httpx.AsyncClient, corp_name: str) -> dict:
+    """회사명 하나로 최근 3개월 기사를 모은다. 0건이어도 단계는 성공이고 화면이 '기사 없음'을 보여준다. [다시 불러오기]도 이 함수를 쓴다."""
+    now = now_kst()
+    articles = await fetch_news(client, corp_name, now.date())
+    return {"query": corp_name, "collected_at": now, "period_start": months_ago(now.date(), MONTHS),
+            "period_end": now.date(), "articles": articles}
 
 
 @dataclass
@@ -110,7 +117,7 @@ class JobManager:
                 step["competitors"]["status"] = "done"
             async with httpx.AsyncClient() as client:  # 네이버·ECOS는 DART와 별개라 DART 잠금 밖에서 부른다
                 begin("news")
-                news = await self._collect_news(client, job.corp_name)
+                news = await collect_news(client, job.corp_name)
                 step["news"]["status"] = "done"
                 begin("macro")
                 macro = await fetch_macro(client)
@@ -149,14 +156,6 @@ class JobManager:
             await enrich_report(job.report_id, self.dart_lock())
         except Exception:
             log.exception("공시 확인·AI 해석 중 예상하지 못한 오류 (%s)", job.corp_name)
-
-    @staticmethod
-    async def _collect_news(client: httpx.AsyncClient, corp_name: str) -> dict:
-        """회사명 하나로 최근 3개월 기사를 모은다. 0건이어도 단계는 성공이고 화면이 '기사 없음'을 보여준다."""
-        now = datetime.now(KST).replace(tzinfo=None, microsecond=0)
-        articles = await fetch_news(client, corp_name, now.date())
-        return {"query": corp_name, "collected_at": now, "period_start": months_ago(now.date(), MONTHS),
-                "period_end": now.date(), "articles": articles}
 
     @staticmethod
     async def _collect_competitors(fetcher: FinancialsFetcher, competitors: list[dict]) -> list[tuple[dict, object]]:
