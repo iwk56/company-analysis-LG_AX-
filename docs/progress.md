@@ -8,7 +8,7 @@
 - Phase 4 (기본 화면) **완료** — 사용자가 브라우저로 직접 확인 (아래 "Phase 4 진행 메모")
 - Phase 5-A (경쟁사 직접 선택 + DART 재무 비교) **완료·커밋됨** (아래 "Phase 5-A 진행 메모")
 - Phase 7-A (기사·환율·기준금리 수집과 3페이지 표시) **완료·커밋됨** (아래 "Phase 7-A 진행 메모"). 7-B(AI 해석)는 6-A 확인 뒤
-- Phase 6-A (공시 확인·AI 추출·해석·화면) **가짜 응답으로 구현·확인 완료·커밋됨, 실제 호출 전** (아래 "Phase 6-A 진행 메모"). 6-B(회계 이슈 체크)는 **가짜 응답으로 구현·확인 완료, 커밋 전, 실제 호출 전** (아래 "Phase 6-B 진행 메모")
+- Phase 6-A (공시 확인·AI 추출·해석·화면) **가짜 응답으로 구현·확인 완료·커밋됨, 실제 호출 전** (아래 "Phase 6-A 진행 메모"). 6-B(회계 이슈 체크)는 **가짜 응답으로 구현·사용자 화면 확인 완료·커밋됨(`회계 이슈 체크 구현 (가짜 응답)`), 실제 호출 전** (아래 "Phase 6-B 진행 메모")
 - Phase 8 (내 코멘트와 예외 처리) **완료·커밋됨** — 사용자가 브라우저로 1~6번 확인 (아래 "Phase 8 진행 메모"). 5-B(주식시세)는 공공데이터포털 키 활성화 후
 
 ## 완료한 것
@@ -87,6 +87,9 @@
 - 네이버 검색 API가 NAVER API HUB로 이전됨. `check_keys.py`의 네이버 확인을 새 주소(`/search/v1/news`)·헤더(`X-NCP-APIGW-API-KEY-ID`/`X-NCP-APIGW-API-KEY`)로 바꾸고 spec.md·plan.md·.env.example 반영
 - `check_keys.py --live --only naver` 1회 실행: **정상**. 키 오류·한도 초과 분류는 공식 가이드의 상태 코드 기준이며 실제 오류 응답으로는 확인 못 함
 - `dart`는 `--live`로 정상 확인(사용자 실행). `data_go_kr`·`ecos`·`openai`의 `--live`는 아직 실행 전
+- **2026-11-03 `check_keys.py --live` 전체 실행**: dart·naver·ecos·openai 정상(openai는 모델 목록 조회만, 텍스트 생성 없음, `gpt-6-luna`·`gpt-6-sol` 목록에 있음). **data_go_kr 실패**: HTTP 403, `SERVICE_KEY_IS_NOT_REGISTERED_ERROR`(코드 30, 등록되지 않은 서비스키). 키는 64자 Decoding 키 형태로 입력돼 있음. 5-B 전에 활용신청 승인·반영 여부 확인 필요. anthropic은 선택 항목이라 호출 안 함
+- **공공데이터포털 403 원인 (2026-11-03 해결)**: 키 문제가 아니라 `check_keys.py`가 **예전 V1 주소**(`/1160100/service/GetStockSecuritiesInfoService/getStockPriceInfo`)를 부르고 있었음. V2에 승인된 키로 V1을 부르면 403 코드 30(등록되지 않은 서비스키)이 난다. 확인 과정: 실제 요청 URL에 이중 인코딩 없음(키가 영숫자 64자라 Encoding/Decoding 값이 같음) → V2 서비스 경로로 바꾸자 키 인증은 통과하고 400 코드 12(기능 이름 오류) → 사용자가 공식 상세 페이지에서 기능 이름 `getStockPriceInfo_V2` 확인. 주소를 `https://apis.data.go.kr/1160100/GetStockSecuritiesInfoService_V2/getStockPriceInfo_V2`로 고친 뒤 `--live --only data_go_kr` **정상**
+- V2 응답 확인(SK하이닉스 1행, `likeSrtnCd=000660`): 시가총액 `mrktTotAmt`·상장주식수 `lstgStCnt`·종가 `clpr`·기준일 `basDt` 있음. 최신 기준일 2026-10-30(조회일 11-03, 영업일 1~2일 늦음), 시가총액 = 종가 × 상장주식수와 일치, 같은 종목 행이 1,675건이라 과거 일별 시세가 쌓여 있음. 기간 조회(`beginBasDt`/`endBasDt`)와 호출 한도는 5-B에서 확인. 공공데이터포털 호출은 원인 확인 3건 + 확인 2건
 
 ## Phase 2 메모
 
@@ -192,7 +195,7 @@ Phase 7(3·4페이지)보다 먼저 진행했다 (공공데이터포털·OpenAI 
 
 ## 다음 할 일
 
-- Phase 6-A·6-B 브라우저 확인(사용자, 가짜 응답) → "허락받았어" 뒤 SK하이닉스 실제 호출 1회(8개 작업)·토큰 수 확인 → 6-B 커밋 요청 (6-A는 커밋됨)
+- Phase 6-A·6-B 브라우저 확인(사용자, 가짜 응답) → "허락받았어" 뒤 SK하이닉스 실제 호출 1회(8개 작업)·토큰 수 확인 (6-A·6-B 모두 커밋됨)
 - Phase 7-A 브라우저 확인(사용자)
 - Phase 7-B(OpenAI 키 후): PEST·5 Forces·기사 주제 묶음·민감도 문장·SWOT·종합 평가·4페이지, 기사 날짜의 주가 차트 연결(5-B 이후)
 

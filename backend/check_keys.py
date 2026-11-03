@@ -83,9 +83,14 @@ def check_dart(client: httpx.Client, env: Mapping[str, str]) -> Outcome:
     return _other(f"DART 코드 {status}")
 
 
+# 금융위원회_주식시세정보 V2 (공공데이터포털 상세 페이지 기준). 예전 V1 주소(/service/GetStockSecuritiesInfoService/getStockPriceInfo)는
+# V2에 승인된 키로 부르면 403 '등록되지 않은 서비스키'(코드 30)가 난다 — 키 문제가 아니다.
+DATA_GO_KR_STOCK_URL = "https://apis.data.go.kr/1160100/GetStockSecuritiesInfoService_V2/getStockPriceInfo_V2"
+
+
 def check_data_go_kr(client: httpx.Client, env: Mapping[str, str]) -> Outcome:
     key = unquote(env["DATA_GO_KR_KEY"])  # 인코딩된 키를 붙여넣었어도 한 번만 인코딩되게 한다
-    r = _get(client, "https://apis.data.go.kr/1160100/service/GetStockSecuritiesInfoService/getStockPriceInfo",
+    r = _get(client, DATA_GO_KR_STOCK_URL,
              params={"serviceKey": key, "numOfRows": 1, "pageNo": 1, "resultType": "json"})  # 주식시세 1행
     if isinstance(r, Outcome):
         return r

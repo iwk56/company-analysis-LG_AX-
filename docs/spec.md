@@ -58,7 +58,7 @@
 | 연구개발비 | OpenDART 정형 API가 있으면 그것, 없으면 사업보고서 "연구개발 활동" 항목 | 1페이지 기업 개요 | 원문에서 뽑으면 "AI 추출" 표시 + 원문 링크 |
 | 기사 | NAVER API HUB 뉴스 검색 (`https://naverapihub.apigw.ntruss.com/search/v1/news`, 구 네이버 검색 API) | 3페이지 기사 묶음 | 제목·요약문·링크·날짜만 제공됨 (본문 전체 아님). 헤더 `X-NCP-APIGW-API-KEY-ID`(Client ID)·`X-NCP-APIGW-API-KEY`(Client Secret), 키 이름은 `.env`의 `NAVER_CLIENT_ID`·`NAVER_CLIENT_SECRET`. 하루 호출 한도는 검색 API 전체 25,000회(가이드 기준) |
 | 환율·기준금리 | 한국은행 ECOS Open API | 3페이지 민감도 | 최근 1년 추이 |
-| 주가·시가총액 | 금융위원회 주식시세정보(공공데이터포털) | PER·PBR, 시가총액 순위, 1년 주가 흐름 차트 | 최근 1년 일별 시세 필요. 6장 확인 필요 1·4 |
+| 주가·시가총액 | 금융위원회_주식시세정보 V2(공공데이터포털), `https://apis.data.go.kr/1160100/GetStockSecuritiesInfoService_V2/getStockPriceInfo_V2` | PER·PBR, 시가총액 순위, 1년 주가 흐름 차트 | 최근 1년 일별 시세 필요. 응답에 종가(`clpr`)·상장주식수(`lstgStCnt`)·시가총액(`mrktTotAmt`) 있음(2026-11-03 확인). 예전 V1 주소(`/service/GetStockSecuritiesInfoService/getStockPriceInfo`)는 쓰지 않는다. 6장 확인 필요 4 |
 | AI 해석·추출 | OpenAI API 또는 Claude API (`LLM_PROVIDER`로 선택, 기본 OpenAI) | 요약·주석·PEST·SWOT·과제·기여 제안, 비중·연구개발비 추출 등 | 호출은 한 모듈에 모음 (0장 규칙 8) |
 
 모든 API 키는 백엔드 `.env`에 둔다. (`DART_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `ECOS_API_KEY`, `DATA_GO_KR_KEY`, `LLM_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_MODEL_EXTRACT`(추출용 소형), `OPENAI_MODEL_WRITE`(해석용 중간급), 선택 항목 `ANTHROPIC_API_KEY`). 개발용: `LLM_PROVIDER=fake`(외부 호출 없이 고정 예시 응답), `LLM_ALLOW_LIVE=1`이 있어야만 실제 OpenAI 호출이 나간다(공유 키 보호)
@@ -352,7 +352,7 @@ ROE = 순이익률 × 총자산회전율 × 재무레버리지(평균 총자산 
 
 ## 6. 확인 필요 (개발 준비 단계에서 확인)
 
-1. **주가·시가총액 출처**: 공공데이터포털 금융위원회 주식시세정보(무료, 공식)를 1순위로 쓰고, 키 발급 후 시가총액 항목 제공 여부 확인
+1. **주가·시가총액 출처**: 공공데이터포털 금융위원회_주식시세정보 V2(무료, 공식)를 쓴다. **확인 완료(2026-11-03)**: V2 응답에 시가총액(`mrktTotAmt`)·상장주식수(`lstgStCnt`) 항목이 있음
 2. **API 사용 조건**: 각 API의 일일 호출 한도를 키 발급 시 확인. 네이버는 NAVER API HUB로 이전을 마쳤고(새 키 발급됨), 유료 전환 여부는 콘솔에서 확인. 에러 응답 형식이 예전과 달라 분류를 실호출 결과로 맞추는 중 (`backend/check_keys.py`)
 3. **AI 사용량**: 리포트 1건당 AI(LLM) 사용량·비용을 첫 리포트 생성 후 측정. 공유 키라 한도를 직접 걸 수 없을 수 있으므로 0장 규칙 9로 사용을 제한
 4. **1년 주가 시계열** (키 발급 후 확인): 금융위원회 주식시세정보에서 기업별 최근 1년 일별 시세(종가)를 기간으로 조회할 수 있는지, 분석 기업+경쟁사 최대 5곳 호출 수가 일일 한도 안인지 확인. 1년 전 날짜가 휴장일이면 다음 첫 거래일 사용(제안). 수정주가가 아닌 한계는 확인 결과와 상관없이 차트 아래에 표시하기로 결정함 (5장)

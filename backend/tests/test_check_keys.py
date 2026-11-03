@@ -65,6 +65,8 @@ def test_all_live_checks_ok(capsys):
         if host == "opendart.fss.or.kr":
             return httpx.Response(200, json={"status": "000", "corp_name": "삼성전자(주)"})
         if host == "apis.data.go.kr":
+            # 금융위원회_주식시세정보 V2 주소 (예전 V1 주소는 V2 승인 키로 403 코드 30)
+            assert request.url.path == "/1160100/GetStockSecuritiesInfoService_V2/getStockPriceInfo_V2"
             return httpx.Response(200, json={"response": {"header": {"resultCode": "00"}, "body": {}}})
         if host == "naverapihub.apigw.ntruss.com":
             assert request.url.path == "/search/v1/news"
