@@ -143,7 +143,7 @@ class Comment(Base):
 
 
 class ArticleSearch(Base):
-    """원자료: 기사 검색 기록. 행이 없는 리포트는 기사 수집 기능이 생기기 전에 만든 리포트이고, 행은 있는데 기사가 0건이면 '최근 3개월 기사 없음'이다."""
+    """원자료: 기사 검색 기록. 행이 없는 리포트는 기사 수집 기능이 생기기 전에 만든 리포트이고, 행은 있는데 기사가 0건이면 '검색결과 없음'이다. 기간은 받은 기사 중 가장 오래된 날짜 ~ 수집일(설명용)."""
     __tablename__ = "article_searches"
 
     id: Mapped[int] = mapped_column(primary_key=True)

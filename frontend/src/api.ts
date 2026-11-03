@@ -153,7 +153,7 @@ export interface ArticleItem {
   link: string
   published_at: string
 }
-/** null = 기사 수집 기능이 생기기 전에 만든 리포트, items가 비면 최근 3개월 기사 없음 (expired면 보관 기간 21일이 지나 지움) */
+/** null = 기사 수집 기능이 생기기 전에 만든 리포트, items가 비면 검색결과 없음 (expired면 보관 기간 21일이 지나 지움) */
 export interface ArticleList {
   query: string
   collected_at: string

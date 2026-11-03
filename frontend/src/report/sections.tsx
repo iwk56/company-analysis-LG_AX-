@@ -623,9 +623,10 @@ export function Articles({ r }: { r: ReportDetail }) {
       .catch((e: ApiError) => setError(e.message))
       .finally(() => setLoading(false))
   }
+  // 약관(검색결과 앞뒤에 다른 내용 삽입 금지)에 따라 내 코멘트란이 붙는 SectionCard를 쓰지 않는다
   return (
-    <SectionCard sectionKey="articles">
-      <h3>네이버 검색결과 <span className={styles.unit}>(참고 목록{a && !a.expired && `, ${a.period_start} ~ ${a.period_end}, 최대 30건`})</span></h3>
+    <section className={styles.card}>
+      <h3>네이버 검색결과 <span className={styles.unit}>(참고 목록{a && !a.expired && ', 최신순 30건'})</span></h3>
       {a === null ? (
         <p className={styles.muted}>이 리포트는 기사 수집 기능이 생기기 전에 만들어져 자료가 없습니다. 리포트를 다시 만들면 표시됩니다.</p>
       ) : a.expired ? (
@@ -637,15 +638,15 @@ export function Articles({ r }: { r: ReportDetail }) {
       ) : (
         <>
           <p className={styles.footnote}>
-            회사명 “{a.query}”의 네이버 뉴스 검색결과를 받은 그대로 보여주는 참고 목록입니다. 리포트의 AI 해석에는 쓰지 않습니다.
+            회사명 “{a.query}”의 네이버 뉴스 검색결과(최신순 30건)를 받은 순서·내용 그대로 보여주는 참고 목록입니다. 리포트의 AI 해석에는 쓰지 않습니다.
             수집일 {dateText(a.collected_at)}, 약관에 따라 {dateText(a.expires_at)}에 지웁니다.
           </p>
           {a.items.length === 0 ? (
-            <p className={styles.muted}>최근 3개월 기사 없음</p>
+            <p className={styles.muted}>검색결과 없음</p>
           ) : (
             <ul className={styles.articles}>
-              {a.items.map((it) => (
-                <li key={it.link}>
+              {a.items.map((it, i) => (
+                <li key={i}>
                   <a href={it.link} target="_blank" rel="noreferrer"><NaverText raw={it.title} /></a>
                   <span className={styles.sub}> {dateText(it.published_at)}</span>
                   {it.summary && <p className={styles.summary}><NaverText raw={it.summary} /></p>}
@@ -661,6 +662,6 @@ export function Articles({ r }: { r: ReportDetail }) {
         </a>
         <span className={styles.footnote}>네이버™는 NAVER®의 등록상표입니다.</span>
       </p>
-    </SectionCard>
+    </section>
   )
 }

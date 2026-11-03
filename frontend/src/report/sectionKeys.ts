@@ -14,7 +14,7 @@ export const SECTION_KEYS = [
   'competitors', // 경쟁사 비교
   'stocks', // 주가 흐름 비교
   'macro', // 3페이지 환율·기준금리
-  'articles', // 3페이지 최근 기사
+  // 'articles'(3페이지 네이버 검색결과)는 약관상 검색결과 뒤에 다른 내용을 붙이지 않으려고 코멘트란을 두지 않는다
 ] as const
 
 export type SectionKey = (typeof SECTION_KEYS)[number]

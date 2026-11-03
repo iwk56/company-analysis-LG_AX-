@@ -29,55 +29,39 @@ def mock_client(handler):
 
 
 # ───────────────────────── 기사 변환
-def test_months_ago_handles_month_end():
-    assert news.months_ago(date(2026, 11, 2), 3) == date(2026, 8, 2)
-    assert news.months_ago(date(2026, 5, 31), 3) == date(2026, 2, 28)
-    assert news.months_ago(date(2026, 1, 15), 3) == date(2025, 10, 15)
-
-
-def test_clean_text_strips_tags_and_entities():
-    assert news.clean_text("<b>SK하이닉스</b>, &quot;HBM&quot; 확대 &amp; 투자") == 'SK하이닉스, "HBM" 확대 & 투자'
-
-
-def test_parse_items_filters_dedupes_and_sorts():
+def test_parse_items_keeps_order_duplicates_and_old_items():
+    """약관(순위·내용 수정 금지): 기간 필터·중복 제거·정렬을 하지 않고 받은 순서 그대로 둔다."""
     items = [
-        item("오래된 기사", "http://a/1", "Mon, 01 Jun 2026 09:00:00 +0900"),  # 3개월 밖
+        item("오래된 기사", "http://a/1", "Mon, 01 Jun 2026 09:00:00 +0900"),
         item("<b>SK하이닉스</b> 실적", "http://a/2", "Sun, 01 Nov 2026 09:00:00 +0900", original="http://orig/2"),
-        item("SK하이닉스 실적!", "http://a/3", "Sun, 01 Nov 2026 08:00:00 +0900"),  # 제목이 같은 기사(기호만 다름)
-        item("다른 기사", "http://a/4", "Sat, 31 Oct 2026 10:00:00 +0900"),
-        item("다른 기사 링크 중복", "http://a/4", "Fri, 30 Oct 2026 10:00:00 +0900"),  # 링크 중복
-        item("날짜 없음", "http://a/5", ""),
-        item("링크 없음", "", "Sat, 31 Oct 2026 10:00:00 +0900"),
-        item("가장 최신", "http://a/6", "Mon, 02 Nov 2026 07:00:00 +0900"),
-        item("미래 날짜", "http://a/7", "Tue, 03 Nov 2026 07:00:00 +0900"),
+        item("SK하이닉스 실적!", "http://a/3", "Sun, 01 Nov 2026 08:00:00 +0900"),
+        item("링크 중복", "http://a/1", "Mon, 02 Nov 2026 07:00:00 +0900"),
     ]
-    out = news.parse_items(items, TODAY)
-    assert [a["title"] for a in out] == ["가장 최신", "<b>SK하이닉스</b> 실적", "다른 기사"]  # 제목은 받은 그대로
+    out = news.parse_items(items)
+    assert [a["title"] for a in out] == ["오래된 기사", "<b>SK하이닉스</b> 실적", "SK하이닉스 실적!", "링크 중복"]
     assert out[1]["link"] == "http://orig/2"  # 언론사 원문 링크 우선
-    assert out[0]["published_at"] == datetime(2026, 11, 2, 7, 0)
+    assert out[3]["published_at"] == datetime(2026, 11, 2, 7, 0)
 
 
 def test_parse_items_keeps_text_as_received():
     """약관(가공 없이 노출): 검색어 강조 <b>와 HTML 문자를 지우지 않고 저장한다. 화면이 안전하게 표시한다."""
     out = news.parse_items([item("&quot;HBM&quot; <b>SK하이닉스</b>", "http://a/1", "Mon, 02 Nov 2026 07:00:00 +0900",
-                                 desc="<b>SK하이닉스</b> 투자 &amp; 확대")], TODAY)
+                                 desc="<b>SK하이닉스</b> 투자 &amp; 확대")])
     assert out[0]["title"] == "&quot;HBM&quot; <b>SK하이닉스</b>"
     assert out[0]["summary"] == "<b>SK하이닉스</b> 투자 &amp; 확대"
 
 
-def test_parse_items_skips_title_with_only_tags():
-    assert news.parse_items([item("<b></b>", "http://a/1", "Mon, 02 Nov 2026 07:00:00 +0900")], TODAY) == []
+def test_parse_items_skips_only_items_that_cannot_be_shown():
+    """링크(원본 이동)나 날짜가 없어 보여줄 수 없는 항목만 뺀다."""
+    out = news.parse_items([item("날짜 없음", "http://a/5", ""), item("링크 없음", "", "Sat, 31 Oct 2026 10:00:00 +0900"),
+                            item("정상", "http://a/6", "Sat, 31 Oct 2026 10:00:00 +0900")])
+    assert [a["title"] for a in out] == ["정상"]
 
 
 def test_is_expired_after_21_days():
     t = datetime(2026, 11, 2, 9, 0)
     assert not news.is_expired(t, datetime(2026, 11, 23, 8, 59))
     assert news.is_expired(t, datetime(2026, 11, 23, 9, 0))
-
-
-def test_parse_items_limits_to_30():
-    items = [item(f"기사 {i}", f"http://a/{i}", f"Mon, 02 Nov 2026 {i % 24:02d}:{i // 24:02d}:00 +0900") for i in range(60)]
-    assert len(news.parse_items(items, TODAY)) == 30
 
 
 # ───────────────────────── 기사 호출
@@ -97,8 +81,8 @@ async def test_fetch_news_sends_company_name_and_headers(keys):
         return httpx.Response(200, json={"items": [item("기사", "http://a/1", "Mon, 02 Nov 2026 07:00:00 +0900")]})
 
     async with mock_client(handler) as c:
-        out = await news.fetch_news(c, "SK하이닉스", TODAY)
-    assert seen["params"] == {"query": "SK하이닉스", "display": "100", "sort": "date"}
+        out = await news.fetch_news(c, "SK하이닉스")
+    assert seen["params"] == {"query": "SK하이닉스", "display": "30", "sort": "date"}  # 최신순 30건
     assert seen["headers"]["X-NCP-APIGW-API-KEY-ID"] == "id-secret-1" and seen["headers"]["X-NCP-APIGW-API-KEY"] == "pw-secret-2"
     assert len(out) == 1
 
@@ -106,7 +90,7 @@ async def test_fetch_news_sends_company_name_and_headers(keys):
 @pytest.mark.anyio
 async def test_fetch_news_zero_articles_is_not_an_error(keys):
     async with mock_client(lambda r: httpx.Response(200, json={"items": []})) as c:
-        assert await news.fetch_news(c, "SK하이닉스", TODAY) == []
+        assert await news.fetch_news(c, "SK하이닉스") == []
 
 
 @pytest.mark.parametrize("status,text", [(401, "인증"), (429, "한도"), (500, "HTTP 500")])
@@ -114,7 +98,7 @@ async def test_fetch_news_zero_articles_is_not_an_error(keys):
 async def test_fetch_news_errors_have_messages(keys, status, text):
     async with mock_client(lambda r: httpx.Response(status, json={"errorCode": "X"})) as c:
         with pytest.raises(news.NewsError) as e:
-            await news.fetch_news(c, "SK하이닉스", TODAY)
+            await news.fetch_news(c, "SK하이닉스")
     assert text in str(e.value) and "secret" not in str(e.value)
 
 
@@ -123,7 +107,7 @@ async def test_fetch_news_missing_key_is_clear(monkeypatch):
     monkeypatch.delenv("NAVER_CLIENT_ID", raising=False)
     async with mock_client(lambda r: httpx.Response(200, json={})) as c:
         with pytest.raises(news.NewsError, match="NAVER_CLIENT_ID"):
-            await news.fetch_news(c, "x", TODAY)
+            await news.fetch_news(c, "x")
 
 
 @pytest.mark.anyio
@@ -133,7 +117,7 @@ async def test_fetch_news_network_error_hides_details(keys):
 
     async with mock_client(handler) as c:
         with pytest.raises(news.NewsError) as e:
-            await news.fetch_news(c, "x", TODAY)
+            await news.fetch_news(c, "x")
     assert "ConnectError" in str(e.value) and "secret" not in str(e.value)
 
 
@@ -253,6 +237,16 @@ def test_report_saves_articles_and_macro(api, monkeypatch):
         {"title": "기사 A", "summary": "요약 A", "link": "http://a/1", "published_at": "2026-11-01T09:00:00"}]
     assert [m["key"] for m in d["macro"]] == ["usd_krw", "base_rate"]
     assert d["macro"][0]["points"] == [{"date": "2026-11-02", "value": 1337.2}]
+
+
+def test_report_keeps_received_order_and_period(api, monkeypatch):
+    arts = [{"title": "새", "summary": "", "link": "http://a/2", "published_at": datetime(2026, 11, 1, 9, 0)},
+            {"title": "옛", "summary": "", "link": "http://a/1", "published_at": datetime(2026, 6, 1, 9, 0)},
+            {"title": "중간", "summary": "", "link": "http://a/3", "published_at": datetime(2026, 10, 1, 9, 0)}]
+    patch_external(monkeypatch, arts)
+    d = api.get(f"/api/reports/{create_and_wait(api)['report_id']}").json()["articles"]
+    assert [a["title"] for a in d["items"]] == ["새", "옛", "중간"]  # 다시 정렬하지 않는다
+    assert d["period_start"] == "2026-06-01"  # 받은 기사 중 가장 오래된 날짜
 
 
 def test_zero_articles_is_saved_as_empty_not_missing(api, monkeypatch):

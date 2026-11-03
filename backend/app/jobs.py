@@ -17,7 +17,7 @@ from .ecos import EcosError, fetch_macro
 from .enrich import enrich_report
 from .fin_collect import NoFinancialsError, collect_company, to_year_list
 from .fin_fetch import FinancialsFetcher
-from .news import MONTHS, NewsError, fetch_news, months_ago, now_kst
+from .news import NewsError, fetch_news, now_kst
 from .recent_results import collect_recent
 from .report_store import save_report
 from .stocks import StockError, fetch_stocks, latest_market
@@ -33,10 +33,14 @@ def new_fetcher(client: httpx.AsyncClient) -> FinancialsFetcher:  # 테스트에
 
 
 async def collect_news(client: httpx.AsyncClient, corp_name: str) -> dict:
-    """회사명 하나로 최근 3개월 기사를 모은다. 0건이어도 단계는 성공이고 화면이 '기사 없음'을 보여준다. [다시 불러오기]도 이 함수를 쓴다."""
+    """회사명 하나로 최신순 기사 30건을 받는다. 0건이어도 단계는 성공이고 화면이 '검색결과 없음'을 보여준다. [다시 불러오기]도 이 함수를 쓴다.
+
+    기간(period)은 받은 기사 중 가장 오래된 날짜 ~ 수집일 (받은 결과를 설명할 뿐 거르는 데 쓰지 않는다).
+    """
     now = now_kst()
-    articles = await fetch_news(client, corp_name, now.date())
-    return {"query": corp_name, "collected_at": now, "period_start": months_ago(now.date(), MONTHS),
+    articles = await fetch_news(client, corp_name)
+    oldest = min((a["published_at"].date() for a in articles), default=now.date())
+    return {"query": corp_name, "collected_at": now, "period_start": min(oldest, now.date()),
             "period_end": now.date(), "articles": articles}
 
 
