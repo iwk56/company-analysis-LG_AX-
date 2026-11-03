@@ -269,6 +269,44 @@ export interface AccountingWriteContent {
   summary: string | null
   notes: Record<string, { meaning: string | null; why: string | null }>
 }
+// ───────── 7-B 외부 환경·SWOT·4페이지 (근거 키 → 이름·링크는 코드가 source_index에 붙인다)
+export interface SourcedItem { text: string; sources: string[] }
+export type SourceIndex = Record<string, { label: string; url: string | null }>
+export interface DisclosureRef { rcept_no: string; title: string; date: string; url: string }
+export interface DisclosuresContent {
+  period_start: string
+  period_end: string
+  total: number
+  items: (DisclosureRef & { filer: string })[]
+}
+export type Direction3 = '긍정' | '부정' | '혼재' | '자료 없음'
+export interface ExternalContent {
+  pest: Record<'politics' | 'economy' | 'society' | 'technology', SourcedItem[]>
+  five_forces: { key: string; name: string; strength: '강' | '중' | '약'; reason: string; sources: string[] }[]
+  topics: { title: string; summary: string; disclosures: DisclosureRef[] }[]
+  sensitivity: {
+    available: boolean
+    export_share: number | null
+    fx: { start_date: string; start: number; end_date: string; end: number; change: number } | null
+    revenue?: { direction: Direction3; reason: string }
+    cost?: { direction: Direction3; reason: string }
+    sources?: string[]
+  }
+  watch: { checks: SourcedItem[]; questions: SourcedItem[] }
+  summaries: Partial<Record<'pest' | 'five_forces' | 'topics' | 'macro' | 'watch', string>>
+  disclosure_period: { period_start: string | null; period_end: string | null; total: number | null }
+  source_index: SourceIndex
+}
+export interface SwotContent {
+  verdict: string | null
+  swot: Record<'strengths' | 'weaknesses' | 'opportunities' | 'threats', SourcedItem[]>
+  source_index: SourceIndex
+}
+export type RoleKey = 'fpa' | 'accounting' | 'treasury' | 'research'
+export interface Page4Content {
+  summary: string | null
+  tasks: { title: string; detail: string | null; basis: { key: string; label: string }[]; capability: string | null; ideas: Record<RoleKey, string | null> }[]
+}
 export interface Enrichments {
   audit_opinion?: Enrichment<AuditContent>
   corrections?: Enrichment<CorrectionsContent>
@@ -281,6 +319,10 @@ export interface Enrichments {
   extract_finance?: Enrichment<FinanceContent>
   write_overview?: Enrichment<OverviewContent>
   write_summaries?: Enrichment<SummariesContent>
+  disclosures?: Enrichment<DisclosuresContent>
+  write_external?: Enrichment<ExternalContent>
+  write_swot?: Enrichment<SwotContent>
+  write_page4?: Enrichment<Page4Content>
 }
 
 export interface ReportDetail {
@@ -319,6 +361,7 @@ export interface ReportDetail {
   macro: MacroSeries[] | null
   stocks?: StockSeries[] | null // null·없음 = 주가 수집 기능 이전에 만든 리포트
   enrichments: Enrichments
+  ai_pending: string[] // 아직 만들지 않은 공시 확인·AI 작업 (기능이 나중에 생겨 기존 리포트에 없는 것 포함)
   comments: Record<string, ReportComment>
 }
 

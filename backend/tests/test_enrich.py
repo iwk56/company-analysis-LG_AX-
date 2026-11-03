@@ -3,6 +3,7 @@ import io
 import json
 import zipfile
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -52,6 +53,7 @@ DOC = (
     + para("나. 감사용역 체결현황") + row("제78기(당기)", "삼정회계법인", "3,100") + "</SECTION-2></SECTION-1>")
 
 
+DISCLOSURES = json.loads((Path(__file__).parent / "fixtures" / "dart_sk_hynix_disclosures_2026-11-03.json").read_text(encoding="utf-8"))
 AUDIT_ROW = {"rcept_no": "20260317000635", "bsns_year": "제78기\n(당기)", "adtor": "삼정회계법인", "adt_opinion": "적정의견",
              "emphs_matter": "해당사항 없음", "core_adt_matter": "가. (연결재무제표) 기계장치의 감가상각개시시점에 대한 적정성 검토", "stlm_dt": "2025-12-31"}
 
@@ -95,6 +97,12 @@ def env(client, monkeypatch):
     monkeypatch.setattr(enrich, "fetch_employees", fake_emp)
     monkeypatch.setattr(enrich, "fetch_audit", fake_audit)
     monkeypatch.setattr(enrich, "fetch_corrections", fake_corrections)
+
+    async def fake_disclosures(_client, corp_code, end):
+        calls["disclosures"] = calls.get("disclosures", 0) + 1
+        return DISCLOSURES
+
+    monkeypatch.setattr(enrich, "fetch_disclosures", fake_disclosures)
     report_id = wait_done(client, create(client)["job_id"])["report_id"]
     return client, report_id, calls
 
@@ -127,7 +135,7 @@ def test_run_ai_extracts_verifies_and_writes(env):
     assert ov["content"]["overview"] is None and any("기업 개요" in w for w in ov["warnings"])  # 예시 문장의 매출액 숫자는 이 가짜 리포트와 달라 버려진다
     assert e["extract_segments"]["by"] == "ai" and e["extract_segments"]["model"] == "fake"
     assert calls["llm"] == ["extract_segments", "extract_rnd", "extract_finance", "extract_going_concern", "extract_related_party",
-                            "write_accounting", "write_overview", "write_summaries"]
+                            "write_accounting", "write_overview", "write_summaries", "write_external", "write_swot", "write_page4"]
 
 
 def test_second_run_does_not_call_ai_again(env):
@@ -200,7 +208,8 @@ def test_failed_extraction_blocks_writes_and_retry_runs_only_failed(env, monkeyp
     state["fail"] = False
     e = client.post(f"/api/reports/{report_id}/ai").json()["enrichments"]
     assert all(v["status"] == "ok" for v in e.values())
-    assert calls["llm"] == ["extract_segments", "write_overview", "write_summaries"]  # 성공해 둔 추출 2개는 다시 부르지 않는다
+    # 성공해 둔 추출 2개는 다시 부르지 않는다. 7-B는 추출 실패로 '앞 단계 실패'였으므로 같이 다시 만든다
+    assert calls["llm"] == ["extract_segments", "write_overview", "write_summaries", "write_external", "write_swot", "write_page4"]
 
 
 def test_openai_blocked_marks_tasks_failed_but_report_still_opens(env, monkeypatch):

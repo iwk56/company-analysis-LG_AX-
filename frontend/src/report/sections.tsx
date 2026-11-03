@@ -14,11 +14,12 @@ import { dateText } from '../format/date'
 import { naverParts } from '../format/naverText'
 import { Num, SignalBadge } from '../ui'
 import { AiBadge, InfoNote, NoteButton, NotePanel, Summary } from './ai'
-import { evidenceFor, useContent, useNotice } from './aiData'
+import { evidenceFor, useContent, useNotice, useTopicMarks } from './aiData'
 import { CashflowChart, ComparisonScatter, LineGroupChart, SegmentChart, SeriesChart, StockIndexChart, TrendChart } from './charts'
 import { COLORS } from './palette'
 import YearTable from './YearTable'
 import { SectionCard } from './comments'
+import { Sensitivity } from './external'
 
 const EOK = 1e8
 const yearsOf = (r: ReportDetail) => r.financial_years.map((y) => y.year).sort((a, b) => a - b)
@@ -388,6 +389,7 @@ function stockRows(list: StockSeries[]) {
 
 export function Stocks({ r }: { r: ReportDetail }) {
   const list = r.stocks ?? null
+  const marks = useTopicMarks()
   const withData = (list ?? []).filter((s) => s.points.length > 0)
   return (
     <SectionCard sectionKey="stocks">
@@ -397,7 +399,7 @@ export function Stocks({ r }: { r: ReportDetail }) {
       ) : (
         <>
           {withData.length > 0 && (
-            <StockIndexChart data={stockRows(withData)} lines={withData.map((s) => ({ key: s.corp_code, name: s.corp_name, isTarget: s.is_target }))} />
+            <StockIndexChart data={stockRows(withData)} lines={withData.map((s) => ({ key: s.corp_code, name: s.corp_name, isTarget: s.is_target }))} marks={marks} />
           )}
           <ul className={styles.sources}>
             {list.map((s) => {
@@ -415,6 +417,7 @@ export function Stocks({ r }: { r: ReportDetail }) {
             })}
           </ul>
           <p className={styles.footnote}>
+            {marks.length > 0 && <>보라색 세로 점선 ①②③은 3페이지 공시 주제의 공시 날짜입니다(휴일이면 다음 거래일). </>}
             수정주가가 아니라 액면분할·배당 등이 반영되지 않았을 수 있습니다. 기준일은 리포트 생성일 1년 전 이후 첫 거래일이며, 보통주 종가 기준입니다.
             {' '}출처: <a href="https://www.data.go.kr/data/15094808/openapi.do" target="_blank" rel="noreferrer">공공데이터포털 금융위원회_주식시세정보</a> (영업일 1~2일 늦게 반영)
           </p>
@@ -594,12 +597,14 @@ function MacroChart({ series }: { series: MacroSeries }) {
 export function Macro({ r }: { r: ReportDetail }) {
   return (
     <SectionCard sectionKey="macro">
-      <h3>환율·기준금리 <span className={styles.unit}>(최근 1년)</span></h3>
+      <h3>경제 환경 민감도 <span className={styles.unit}>(환율·기준금리 최근 1년)</span></h3>
+      <Summary sectionKey="macro" />
       {r.macro === null ? (
         <p className={styles.muted}>이 리포트는 환율·금리 수집 기능이 생기기 전에 만들어져 자료가 없습니다. 리포트를 다시 만들면 표시됩니다.</p>
       ) : (
         r.macro.map((s) => <MacroChart key={s.key} series={s} />)
       )}
+      <Sensitivity />
     </SectionCard>
   )
 }

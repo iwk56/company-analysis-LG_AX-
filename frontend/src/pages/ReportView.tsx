@@ -6,6 +6,7 @@ import styles from '../app.module.css'
 import { Accounting } from '../report/accounting'
 import { AiBanner, AiProvider } from '../report/ai'
 import { CommentsProvider } from '../report/comments'
+import { FiveForces, Page4, Pest, Swot, Topics, Watch } from '../report/external'
 import { Articles, Cashflow, Competitors, CoreCards, Dupont, Header, Macro, Overview, RecentBox, Ratios, Segments, Sources, Stocks, Trend } from '../report/sections'
 
 export default function ReportPage() {
@@ -37,6 +38,7 @@ function ReportView({ reportId }: { reportId: string }) {
       <div className={styles.pagebreak}>1페이지 · 한눈에 보기</div>
       <Overview r={report} />
       <CoreCards r={report} />
+      <Swot />
       <Segments r={report} />
       <div className={styles.pagebreak}>2페이지 · 재무 건전성</div>
       <RecentBox r={report} />
@@ -48,8 +50,14 @@ function ReportView({ reportId }: { reportId: string }) {
       <Competitors r={report} />
       <Stocks r={report} />
       <div className={styles.pagebreak}>3페이지 · 외부 환경과 관심사항</div>
+      <Pest />
+      <FiveForces />
+      <Topics />
       <Macro r={report} />
+      <Watch />
       <Articles r={report} />
+      <div className={styles.pagebreak}>4페이지 · 회사의 과제와 나의 기여</div>
+      <Page4 />
       <Sources r={report} />
      </AiProvider>
     </CommentsProvider>

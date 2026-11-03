@@ -111,3 +111,21 @@
 /* 열이 많은 표(경쟁사 비교): 줄바꿈 대신 가로 스크롤 */
 .tablescroll { overflow-x: auto; }
 .tablescroll .table th, .tablescroll .table td { white-space: nowrap; }
+
+/* 7-B 외부 환경·SWOT·4페이지 */
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 8px 0; }
+.grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 8px 0; }
+.box { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.boxtitle { font-weight: 600; margin-bottom: 4px; }
+.itemlist { margin: 4px 0; padding-left: 18px; font-size: 0.9rem; }
+.itemlist li { margin: 3px 0; }
+.srctags { color: var(--sub); font-size: 0.78rem; }
+.srctags a { color: var(--sub); }
+.small { font-size: 0.9rem; margin: 4px 0; }
+.disclist { list-style: none; margin: 6px 0 0; padding: 0; font-size: 0.85rem; }
+.disclist li { margin: 2px 0; }
+.verdict { font-size: 1.02rem; font-weight: 600; margin: 4px 0 10px; }
+.table th.left, .table td.left { text-align: left; }
+.suggestbadge { display: inline-block; font-size: 0.7rem; font-weight: 700; color: #0f5132; background: #d1e7dd; border-radius: 4px; padding: 1px 6px; }
+.forces th, .forces td:nth-child(-n+2) { white-space: nowrap; }
+.forces td:first-child { width: 8em; }

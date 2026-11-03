@@ -5,6 +5,7 @@ import {
 } from 'recharts'
 import styles from '../app.module.css'
 import { paddedDomain } from '../format/domain'
+import { snapMarks } from '../format/marks'
 import { COLORS } from './palette'
 import { formatChange, formatMultiple, formatPercent, formatWonTable } from '../format/number'
 import type { Formatted } from '../format/number'
@@ -165,10 +166,12 @@ export function SeriesChart({ points, name, format, color, step }: {
 const OTHER_COLORS = [COLORS[0], COLORS[2], COLORS[3], '#64748b'] // 분석 기업은 COLORS[1]
 
 /** 주가 흐름 비교: 기업마다 기준일 종가 = 100. lines의 key는 data 행의 열 이름 */
-export function StockIndexChart({ data, lines }: {
+export function StockIndexChart({ data, lines, marks = [] }: {
   data: Row[]
   lines: { key: string; name: string; isTarget: boolean }[]
+  marks?: { date: string; label: string }[] // 3페이지 공시 주제 날짜 (주제 번호)
 }) {
+  const snapped = snapMarks(data.map((r) => String(r.date)), marks)
   const values = data.flatMap((r) => lines.map((l) => r[l.key])).filter((v): v is number => typeof v === 'number')
   const domain = values.length ? paddedDomain([...values, 100], { low: 0.1, high: 0.1 }) : undefined
   let other = 0
@@ -185,6 +188,9 @@ export function StockIndexChart({ data, lines }: {
           <Tooltip formatter={(v) => idx(v)} labelFormatter={(d) => String(d)} />
           <Legend verticalAlign="top" height={28} />
           <ReferenceLine y={100} stroke="#94a3b8" strokeDasharray="4 4" />
+          {snapped.map((m) => (
+            <ReferenceLine key={m.date} x={m.date} stroke="#7c3aed" strokeDasharray="2 3" label={{ value: m.label, position: 'top', fill: '#7c3aed', fontSize: 12 }} />
+          ))}
           {colored.map((l) => (
             <Line key={l.key} dataKey={l.key} name={l.isTarget ? `${l.name} (분석 기업)` : l.name} stroke={l.color}
               strokeWidth={l.isTarget ? 3 : 1.5} dot={false} connectNulls isAnimationActive={false} />

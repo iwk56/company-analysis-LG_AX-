@@ -91,3 +91,49 @@ WRITE_ACCOUNTING = """[할 일] [자료]만 보고 회계 이슈 체크리스트
   특수관계자 거래의 30% 기준은 이 도구의 참고 기준일 뿐 법적 기준이 아니라고 why에 한 번 언급합니다.
 - 확인 불가인 항목은 notes에서 해당 키를 빼도 됩니다. 법적 위반이나 부정을 단정하지 않습니다.
 출력 형식: {"summary": "", "notes": {"<항목 키>": {"meaning": "", "why": ""}}}"""
+
+
+# ───────────────────────── 7-B 외부 환경·SWOT·4페이지
+# 모든 항목은 sources(근거 키 목록)를 함께 돌려준다. 코드는 [근거 키 목록]에 없는 키를 버리고, 근거가 하나도 남지 않은 항목은 버린다.
+SOURCES_RULE = """- 항목마다 sources에 근거가 된 자료의 근거 키를 [근거 키 목록]에서 골라 적습니다(1개 이상). 목록에 없는 키를 지어내지 않습니다. 근거 키가 없는 항목은 만들지 않습니다."""
+
+WRITE_EXTERNAL = """[할 일] [자료]만 보고 외부 환경 분석을 JSON으로 만드세요. 쉬운 말로 씁니다.
+- pest: politics(정책)·economy(경제)·society(사회)·technology(기술) 각 1~2개 항목. 항목마다 text 1문장과 sources.
+- five_forces: rivalry(기존 경쟁)·new_entrants(신규 진입)·substitutes(대체재)·supplier_power(공급자 교섭력)·buyer_power(구매자 교섭력) 다섯 개 모두.
+  각각 strength는 "강"·"중"·"약" 중 하나, reason은 한 줄 근거, sources.
+- topics: [공시 목록]의 공시를 주제 최대 3개로 묶습니다. 주제마다 title(짧은 이름), summary(2~3문장), rcept_nos(그 주제에 속한 공시의 접수번호, 목록에 있는 것만).
+  공시는 제목과 날짜만 주어지므로 공시 본문 내용을 추측하지 말고 '어떤 종류의 공시가 언제 있었는지'만 씁니다. 묶을 만한 공시가 적으면 3개보다 적게 만듭니다.
+- sensitivity: [요청]에 '민감도 작성'이 있을 때만. 원/달러 환율이 10% 오르면 revenue(매출)와 cost(원가) 각각에 미치는 direction("긍정"·"부정"·"혼재"·"자료 없음" 중 하나)과 reason(한 줄).
+  금액이나 영향 크기를 추정하지 않고 방향과 이유만 씁니다. sources 포함. 요청이 없으면 null.
+- watch: checks(앞으로 확인할 점 3개), questions(생각해볼 질문 3개). 항목마다 text와 sources.
+- summaries: pest, five_forces, topics, macro(환율·기준금리와 민감도), watch 섹션마다 한 줄(80자 안팎).
+""" + SOURCES_RULE + """
+출력 형식:
+{"pest": {"politics": [{"text": "", "sources": [""]}], "economy": [], "society": [], "technology": []},
+ "five_forces": {"rivalry": {"strength": "", "reason": "", "sources": [""]}, "new_entrants": {}, "substitutes": {}, "supplier_power": {}, "buyer_power": {}},
+ "topics": [{"title": "", "summary": "", "rcept_nos": [""]}],
+ "sensitivity": {"revenue": {"direction": "", "reason": ""}, "cost": {"direction": "", "reason": ""}, "sources": [""]},
+ "watch": {"checks": [{"text": "", "sources": [""]}], "questions": [{"text": "", "sources": [""]}]},
+ "summaries": {"pest": "", "five_forces": "", "topics": "", "macro": "", "watch": ""}}"""
+
+WRITE_SWOT = """[할 일] [자료](1~3페이지 분석 결과)만 보고 SWOT과 종합 한 줄 평가를 JSON으로 만드세요. 쉬운 말로 씁니다.
+- swot: strengths(강점)·weaknesses(약점)·opportunities(기회)·threats(위협) 각 2~3개. 강점·약점은 회사 내부(재무·사업 구조), 기회·위협은 외부 환경입니다. 항목마다 text 1문장과 sources.
+- verdict: 회사 상황을 한 줄(80자 안팎)로 평가. 투자 권유·주가 전망은 쓰지 않습니다.
+""" + SOURCES_RULE + """
+출력 형식: {"verdict": "", "swot": {"strengths": [{"text": "", "sources": [""]}], "weaknesses": [], "opportunities": [], "threats": []}}"""
+
+WRITE_PAGE4 = """[할 일] [자료](1~3페이지 분석 결과)에서 이 회사가 풀어야 할 과제를 최대 3개 뽑아 JSON으로 만드세요. 쉬운 말로 씁니다.
+- tasks: 과제마다 title(과제 이름), detail(왜 과제인지 1문장), basis(근거가 된 섹션의 근거 키 목록, [근거 키 목록]에 있는 것만 1개 이상),
+  capability(그 과제를 풀 때 필요한 역량 1줄), ideas(직무별 기여 아이디어 각 1줄: fpa(FP&A), accounting(재무회계), treasury(자금), research(리서치)).
+- 근거가 되는 섹션이 없는 과제는 만들지 않습니다. 근거가 부족하면 3개보다 적게 만듭니다.
+- 역량·기여 아이디어는 '무엇을 볼 수 있는가·무엇을 정리해 볼 수 있는가' 수준의 짧은 아이디어로 씁니다.
+  자기소개서 문장(1인칭 '저는·제가', '입사하면', '기여하겠습니다', '지원' 등)은 쓰지 않습니다.
+- summary: 4페이지 전체를 한 줄(80자 안팎)로.
+- 회사의 공식 인재상이나 채용 기준을 말하지 않습니다.
+출력 형식: {"summary": "", "tasks": [{"title": "", "detail": "", "basis": [""], "capability": "",
+ "ideas": {"fpa": "", "accounting": "", "treasury": "", "research": ""}}]}"""
+
+
+def source_list(keys: dict[str, str]) -> str:
+    """[근거 키 목록] 문단: '키: 설명' 한 줄씩."""
+    return "\n".join(f"{k}: {label}" for k, label in keys.items())

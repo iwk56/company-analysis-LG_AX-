@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from . import company_cache, report_store
-from .enrich import AlreadyRunning, enrich_report
+from .enrich import TASKS, AlreadyRunning, enrich_report
 from .corp_codes import load_listed_corps
 from .dart import DartError
 from .db import get_session
@@ -111,6 +111,8 @@ def get_report(report_id: int, session: Session = Depends(get_session)):
     report = report_store.get_report(session, report_id)
     if report is None:
         raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다")
+    # 아직 만들지 않은 AI 작업 (기능이 나중에 생겨 기존 리포트에 없는 것 포함). 화면이 [AI 해석 만들기]를 보여주는 데 쓴다
+    report["ai_pending"] = [k for k in TASKS if k not in report["enrichments"]]
     return report
 
 

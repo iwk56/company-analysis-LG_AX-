@@ -64,3 +64,11 @@ export function useNote(key: string): { meaning: string | null; why: string | nu
   if (!note) return null
   return { ...note, evidence: evidenceFor(report, key, e), task: main ? 'write_summaries' : 'write_accounting' }
 }
+
+export const TOPIC_MARK = ['①', '②', '③']
+
+/** 주가 차트에 표시할 3페이지 공시 주제 날짜 (주제 번호와 날짜) */
+export function useTopicMarks(): { date: string; label: string }[] {
+  const c = useContent('write_external')
+  return (c?.topics ?? []).flatMap((t, i) => [...new Set(t.disclosures.map((d) => d.date))].map((date) => ({ date, label: TOPIC_MARK[i] })))
+}
