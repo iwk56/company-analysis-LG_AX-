@@ -2,13 +2,13 @@
   "verdict": "AI 메모리 수요로 실적과 재무구조가 크게 좋아졌지만 DRAM 의존도와 업황 변동성이 과제입니다.",
   "swot": {
     "strengths": [
-      {"text": "영업이익률이 48.6%로 비교 기업 중 1위입니다.", "sources": ["calc:competitors"]},
+      {"text": "회사가 밝힌 DRAM 시장점유율이 34.3%로 메모리 시장에서 큰 몫을 차지합니다.", "sources": ["pdf:position"]},
       {"text": "부채비율이 87.5%에서 45.9%로 낮아져 재무구조가 개선됐습니다.", "sources": ["calc:ratios"]},
       {"text": "영업현금흐름 53.4조 원으로 투자 재원을 스스로 만들고 있습니다.", "sources": ["calc:core", "calc:cashflow"]}
     ],
     "weaknesses": [
       {"text": "DRAM 매출 비중이 77.1%로 한 제품에 크게 기대고 있습니다.", "sources": ["dart:segments"]},
-      {"text": "매출액 규모는 비교 기업 중 2위로 삼성전자보다 작습니다.", "sources": ["calc:competitors"]}
+      {"text": "매출이 DRAM 한 사업에 77.1% 집중되어 있어 DRAM 업황에 실적이 크게 좌우될 수 있습니다.", "sources": ["check:dependence"]}
     ],
     "opportunities": [
       {"text": "생성형 AI와 온디바이스 AI 확산으로 고성능 메모리 수요가 늘고 있습니다.", "sources": ["p3:pest"]},

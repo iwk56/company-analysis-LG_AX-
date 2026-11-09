@@ -113,7 +113,7 @@ def test_loss_to_profit_and_zero_denominators():
     cur = {"revenue": 500, "operating_income": 50, "net_income_parent": 30, "net_income": 30}
     prior = {"revenue": 0, "operating_income": -100, "net_income_parent": 0, "net_income": 0}
     r, _ = run(collect_recent(FakeFetcher({(2026, "CFS", "11012"): interim(cur, prior)}), company(), TODAY))
-    assert r.changes["operating_income"].value == pytest.approx(1.5)        # (50-(-100)) ÷ |-100|
+    assert r.changes["operating_income"].na_reason == "흑자전환"             # 부호가 바뀌면 % 대신 흑자전환
     assert r.changes["revenue"].value is None and "분모 0" in r.changes["revenue"].na_reason
     assert r.changes["net_income_parent"].value is None
     assert r.operating_margin_prior.value is None and r.changes["operating_margin"].value is None  # 전년 매출 0

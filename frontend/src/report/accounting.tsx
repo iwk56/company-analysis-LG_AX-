@@ -89,9 +89,11 @@ function GoingConcern({ r }: { r: ReportDetail }) {
         <>
           <p>
             {c.verdict === 'clear' ? '감사보고서에 계속기업 관련 중요한 불확실성이 보고되지 않았습니다.' : '감사보고서에 계속기업 관련 중요한 불확실성이 보고되었습니다. 원문에서 내용을 확인하세요.'}{' '}
-            {c.basis === 'ai' ? <AiBadge task="extract_going_concern" kind="extract" /> : <span className={styles.sub}>(감사보고서 강조사항에서 코드가 확인)</span>} <Link url={link} />
+            {c.basis === 'ai' ? <AiBadge task="extract_going_concern" kind="extract" />
+              : c.basis === 'audit' ? <span className={styles.sub}>(감사의견 {c.opinion ?? '적정의견'}, 강조사항에 계속기업 언급 없음 — 코드가 확인)</span>
+              : <span className={styles.sub}>(감사보고서 강조사항에서 코드가 확인)</span>} <Link url={link} />
           </p>
-          <p className={styles.quote}>원문 인용: {c.quote}</p>
+          {c.quote && <p className={styles.quote}>원문 인용: {c.quote}</p>}
         </>
       )}
     </Item>

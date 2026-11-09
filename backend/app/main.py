@@ -5,9 +5,10 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from pydantic import BaseModel
 
-from . import company_cache, db, report_store
+from . import company_cache, config, db, report_store
 from .ksic import industry_name
 from .corp_codes import load_listed_corps, search_listed
 from .dart import DartError
@@ -123,6 +124,38 @@ async def _listed_matches(client: httpx.AsyncClient, hits: list[dict]) -> Matche
     return out
 
 
+STARTED_AT = __import__("datetime").datetime.now().isoformat(timespec="seconds")  # 서버를 켠 시각 (코드 반영 확인용)
+
+
+class AiModeUpdate(BaseModel):
+    live: bool
+
+
+@app.get("/api/ai-mode")
+def ai_mode():
+    """현재 서버의 실제 AI 호출 상태. 키 값은 돌려주지 않는다."""
+    provider = config.get_llm_provider()
+    return {"provider": provider, "live": provider != "fake" and config.live_ai_allowed(), "started_at": STARTED_AT}
+
+
+@app.post("/api/ai-mode")
+def update_ai_mode(data: AiModeUpdate, request: Request):
+    """실제 AI 호출을 이 서버가 실행되는 동안만 허용하거나 차단한다 (로컬 브라우저 전용)."""
+    if request.client is None or request.client.host not in ("127.0.0.1", "::1", "localhost", "testclient"):
+        raise HTTPException(status_code=403, detail="실제 AI 사용 설정은 이 컴퓨터의 홈 화면에서만 변경할 수 있습니다")
+    if data.live:
+        if config.get_llm_provider() != "openai":
+            raise HTTPException(status_code=400, detail="실제 AI 사용은 LLM_PROVIDER=openai에서만 설정할 수 있습니다")
+        try:
+            config.get_openai_api_key()
+            config.get_llm_model("extract")
+            config.get_llm_model("write")
+        except RuntimeError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from None
+    config.set_runtime_live_ai(data.live)
+    return ai_mode()
+
+
 @app.get("/api/companies/search")
 async def search_companies(q: str = Query(..., description="기업명 (2글자 이상)")):
     q = q.strip()
@@ -150,6 +183,7 @@ async def search_companies(q: str = Query(..., description="기업명 (2글자 �
             # 업종명을 못 찾으면(표에 없는 코드 등) 코드를 그대로 보여준다
             "industry_label": industry_name(codes[c["corp_code"]]) or codes[c["corp_code"]],
             "is_financial": is_financial(c["corp_code"], codes[c["corp_code"]]),
+            "homepage": found.cache[c["corp_code"]].get("homepage"),
         }
         for c in corps
     ]

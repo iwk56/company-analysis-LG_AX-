@@ -17,7 +17,8 @@ from .ecos import EcosError, fetch_macro
 from .enrich import enrich_report
 from .fin_collect import NoFinancialsError, collect_company, to_year_list
 from .fin_fetch import FinancialsFetcher
-from .news import NewsError, fetch_news, now_kst
+from .news import TOPIC_DISPLAY, TOPIC_SORT, NewsError, fetch_news, now_kst, topic_queries
+from .dart_sections import fetch_records as fetch_dart_records
 from .pdf_uploads import Upload, to_record
 from .recent_results import collect_recent
 from .report_store import save_report
@@ -25,7 +26,7 @@ from .stocks import StockError, fetch_stocks, latest_market
 
 log = logging.getLogger("uvicorn.error")
 
-STEPS = (("pdf", "PDF 읽기"), ("collect", "재무 수집"), ("recent", "최근 실적 수집"), ("competitors", "경쟁사 재무 수집"), ("news", "기사 수집"), ("macro", "지표 수집"), ("stocks", "주가 수집"), ("calc", "계산"), ("save", "저장"), ("ai", "공시 확인·AI 해석"))
+STEPS = (("pdf", "보고서 원문 읽기"), ("collect", "재무 수집"), ("recent", "최근 실적 수집"), ("competitors", "경쟁사 재무 수집"), ("news", "기사 수집"), ("macro", "지표 수집"), ("stocks", "주가 수집"), ("calc", "계산"), ("save", "저장"), ("ai", "공시 확인·AI 해석"))
 MAX_KEPT_JOBS = 50
 
 
@@ -34,12 +35,15 @@ def new_fetcher(client: httpx.AsyncClient) -> FinancialsFetcher:  # 테스트에
 
 
 async def collect_news(client: httpx.AsyncClient, corp_name: str) -> dict:
-    """회사명 하나로 최신순 기사 30건을 받는다. 0건이어도 단계는 성공이고 화면이 '검색결과 없음'을 보여준다. [다시 불러오기]도 이 함수를 쓴다.
+    """구체화한 사업 주제별 검색어 6개로 정확도순 5건씩 받는다(news.TOPICS). 0건이어도 단계는 성공이고 화면이 '검색결과 없음'을 보여준다.
+    [다시 불러오기]도 이 함수를 쓴다. 기사마다 어느 검색어의 결과인지(topic)를 남기고, 순서·내용은 받은 그대로 둔다.
 
     기간(period)은 받은 기사 중 가장 오래된 날짜 ~ 수집일 (받은 결과를 설명할 뿐 거르는 데 쓰지 않는다).
     """
     now = now_kst()
-    articles = await fetch_news(client, corp_name)
+    articles = []
+    for _label, query in topic_queries(corp_name):
+        articles += [{**a, "topic": query} for a in await fetch_news(client, query, display=TOPIC_DISPLAY, sort=TOPIC_SORT)]
     oldest = min((a["published_at"].date() for a in articles), default=now.date())
     return {"query": corp_name, "collected_at": now, "period_start": min(oldest, now.date()),
             "period_end": now.date(), "articles": articles}
@@ -112,7 +116,14 @@ class JobManager:
 
         try:
             begin("pdf")
-            pdfs = [await asyncio.to_thread(to_record, u) for u in job.pdfs]  # 목차로 섹션을 나눈다 (못 찾은 섹션도 리포트는 만든다)
+            if job.pdfs:  # 사용자가 PDF를 올렸으면 그것을 쓴다 (선택)
+                pdfs = [await asyncio.to_thread(to_record, u) for u in job.pdfs]  # 목차로 섹션을 나눈다 (못 찾은 섹션도 리포트는 만든다)
+            else:  # 2026-11-04부터 기본: DART 공시 원문을 자동으로 받아 같은 섹션을 만든다
+                try:
+                    async with httpx.AsyncClient() as client, self.dart_lock():
+                        _base_year, pdfs = await fetch_dart_records(client, job.corp_code)
+                except DartError as e:
+                    raise StepFailed(f"DART에서 보고서 원문을 받지 못했습니다: {e}") from None
             step["pdf"]["status"] = "done"
             async with httpx.AsyncClient() as client, self.dart_lock():
                 fetcher = new_fetcher(client)

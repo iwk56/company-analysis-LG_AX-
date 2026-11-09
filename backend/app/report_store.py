@@ -5,9 +5,11 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from .calc.cash import compute_cash
+from .calc.income import compute_income
 from .calc.models import YearAnalysis, YearFinancials
 from .fin_collect import CompanyFinancials
-from .news import RETENTION_DAYS, is_expired, now_kst
+from .news import RETENTION_DAYS, is_expired, now_kst, topic_label, topic_queries
 from .recent_results import RecentResults
 from .report_build import build_sections, data_as_of, source_rows, won
 from .report_models import (
@@ -31,7 +33,9 @@ def save_report(session: Session, company: dict, res: CompanyFinancials, analysi
     excluded = {x["corp_code"]: x["reason"] for x in (comparison or {}).get("excluded", [])}
     competitor_rows = [{"corp_code": c["corp_code"], "corp_name": c["corp_name"], "stock_code": c["stock_code"],
                         "industry_name": c.get("industry_name"), "included": c["corp_code"] not in excluded,
-                        "excluded_reason": excluded.get(c["corp_code"])} for c in competitors or []]
+                        "excluded_reason": excluded.get(c["corp_code"]),
+                        # 2026-11-04 자동 선정: 왜 골랐는지·누가 골랐는지(ai | industry). 직접 고른 경쟁사는 없음
+                        "pick_reason": c.get("pick_reason"), "picked_by": c.get("picked_by")} for c in competitors or []]
     if company.get("is_financial") is None:
         warnings.append("업종코드를 확인하지 못해 금융업 여부를 판별하지 못했습니다")
     report = Report(
@@ -50,6 +54,9 @@ def save_report(session: Session, company: dict, res: CompanyFinancials, analysi
             current={k: won(v) for k, v in recent.current.items()}, prior={k: won(v) for k, v in recent.prior.items()},
             notes=list(recent.notes))
     sections = build_sections(analysis, recent)
+    sections["income"] = compute_income(res.years)  # 2026-11-04 손익계산서 분석
+    sections["cash"] = compute_cash(res.years, res.cf_detail)  # 2026-11-04 현금흐름 분석
+    sections["balance_details"] = {str(year): details for year, details in sorted(res.balance_details.items())}
     if comparison:
         sections["comparison"] = comparison
     for name, content in sections.items():
@@ -108,6 +115,16 @@ def replace_articles(session: Session, report_id: int, news: dict) -> bool:
     return True
 
 
+def _with_income(results: dict, years) -> dict:
+    """손익계산서 분석(2026-11-04)이 없는 예전 리포트는 저장된 연도별 숫자로 그 자리에서 계산한다.
+    예전 리포트에는 매출총이익·판관비·세전이익 등이 없어 계산 가능한 단계(매출총이익=매출−원가, 판관비=매출총이익−영업이익)만 나온다."""
+    if years and ("income" not in results or "cash" not in results):
+        ys = {fy.year: YearFinancials(year=fy.year, **{f: getattr(fy, f) for f in AMOUNT_FIELDS}) for fy in years}
+        results.setdefault("income", compute_income(ys))
+        results.setdefault("cash", compute_cash(ys))  # 예전 리포트: 영업·투자·재무 합계만 (설비투자·배당 등은 새 리포트부터)
+    return results
+
+
 def get_report(session: Session, report_id: int) -> dict | None:
     purge_expired_articles(session)  # 보관 기간이 지난 기사는 보여주기 전에 지운다
     r = session.get(Report, report_id)
@@ -130,7 +147,7 @@ def get_report(session: Session, report_id: int) -> dict | None:
             "period_current": recent.period_current, "period_prior": recent.period_prior,
             "current": recent.current, "prior": recent.prior, "notes": recent.notes},
         "recent_reason": r.recent_reason,
-        "results": {cr.section: cr.content for cr in r.results},
+        "results": _with_income({cr.section: cr.content for cr in r.results}, r.financial_years),
         "sources": [{"kind": s.kind, "year": s.year, "label": s.label, "rcept_no": s.rcept_no, "url": s.url}
                     for s in r.sources],
         "articles": _articles_view(r.article_search),
@@ -157,15 +174,31 @@ def _pdf_view(p: ReportPdf) -> dict:
 
 
 def _articles_view(search: ArticleSearch | None) -> dict | None:
-    """None = 기사 수집 기능 이전에 만든 리포트. 기사가 0건이면 items가 빈 목록, expired면 보관 기간(21일)이 지나 지운 것."""
+    """None = 기사 수집 기능 이전에 만든 리포트. 기사가 0건이면 items가 빈 목록, expired면 보관 기간(21일)이 지나 지운 것.
+
+    groups: 검색어별 묶음(받은 순서 그대로). 주제별 검색어 이전 리포트는 회사명 검색어 하나짜리 묶음 하나.
+    """
     if search is None:
         return None
     expired = is_expired(search.collected_at, now_kst())
+    items = [] if expired else [{"title": a.title, "summary": a.summary, "link": a.link, "published_at": a.published_at.isoformat(),
+                                 "topic": a.topic} for a in search.articles]
+    topics = topic_queries(search.query)
+    if any(it["topic"] for it in items) or (expired and topics):
+        current_queries = {q for _, q in topics}
+        stored_queries = list(dict.fromkeys(it["topic"] for it in items if it["topic"]))
+        legacy_queries = [(topic_label(q, search.query), q) for q in stored_queries if q not in current_queries]
+        if stored_queries and not any(q in current_queries for q in stored_queries):
+            topics = legacy_queries
+        else:
+            topics.extend(legacy_queries)
+        groups = [{"label": label, "query": q, "items": [it for it in items if it["topic"] == q]} for label, q in topics]
+    else:
+        groups = [{"label": None, "query": search.query, "items": items}]
     return {"query": search.query, "collected_at": search.collected_at.isoformat(),
             "period_start": search.period_start.isoformat(), "period_end": search.period_end.isoformat(),
             "expired": expired, "expires_at": (search.collected_at + timedelta(days=RETENTION_DAYS)).isoformat(),
-            "items": [] if expired else [{"title": a.title, "summary": a.summary, "link": a.link, "published_at": a.published_at.isoformat()}
-                      for a in search.articles]}
+            "items": items, "groups": groups}
 
 
 def set_comment(session: Session, report_id: int, section_key: str, content: str) -> dict | None | bool:

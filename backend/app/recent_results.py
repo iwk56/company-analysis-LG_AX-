@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from .calc.models import Metric
-from .calc.ratios import divide, growth
+from .calc.ratios import divide, profit_growth
 from .fin_collect import CompanyFinancials
 from .fin_fetch import HALF_REPORT, THIRD_QUARTER_REPORT, FinancialsFetcher
 from .fin_mapping import RULES_BY_FIELD, find_row, parse_amount
@@ -56,7 +56,7 @@ def build_recent(data: dict, res: CompanyFinancials, year: int, reprt_code: str,
 
     margin_cur = divide(current["operating_income"], current["revenue"])
     margin_prior = divide(prior["operating_income"], prior["revenue"])
-    changes = {f: growth(current[f], prior[f], True, abs_denominator=True) for f in ITEMS}
+    changes = {f: profit_growth(current[f], prior[f], True) for f in ITEMS}  # 부호가 바뀌면 흑자전환·적자전환
     if margin_cur.value is not None and margin_prior.value is not None:
         changes["operating_margin"] = Metric(margin_cur.value - margin_prior.value)
     else:

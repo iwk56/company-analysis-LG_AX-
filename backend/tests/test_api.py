@@ -46,7 +46,18 @@ def test_samsung_returns_only_y_k_with_industry_names(client):
     by = {i["corp_name"]: i for i in body["items"]}
     assert by["삼성전자"]["industry_name"] == "통신 및 방송장비 제조업"
     assert by["삼성전자"]["is_financial"] is False
+    assert by["삼성전자"]["homepage"] is None
     assert by["삼성생명"]["industry_label"] == "생명보험업" and by["삼성생명"]["is_financial"] is True
+
+
+def test_search_returns_cached_official_homepage(client):
+    cache = company_cache.load_cache()
+    cache["00126380"]["homepage"] = "https://www.samsung.com"
+    company_cache.save_cache(cache)
+
+    body = client.get("/api/companies/search", params={"q": "삼성전자"}).json()
+
+    assert body["items"][0]["homepage"] == "https://www.samsung.com"
 
 
 def test_holding_companies_split_by_exception_list(client):

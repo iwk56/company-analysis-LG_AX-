@@ -58,10 +58,24 @@ export function formatWonCard(won: number | null | undefined): Formatted {
   return build(jo, 1, '조 원', false)
 }
 
+/** 증감·영향 금액 카드: +1.2조 원 / −350억 원 */
+export function formatWonCardDelta(won: number | null | undefined): Formatted {
+  if (!usable(won)) return noData()
+  const jo = won / WON_PER_JO
+  if (Math.abs(jo) < CARD_MIN_JO) return build(won / WON_PER_EOK, 0, '억 원', true)
+  return build(jo, 1, '조 원', true)
+}
+
 /** 표용 금액: 억 원, 정수, 천 단위 쉼표. 단위는 표 제목에 쓰므로 숫자만 돌려준다 */
 export function formatWonTable(won: number | null | undefined): Formatted {
   if (!usable(won)) return noData()
   return build(won / WON_PER_EOK, 0, '', false)
+}
+
+/** 표의 증감 금액: +1,234 / −567 (단위는 표 제목에 표시) */
+export function formatWonTableDelta(won: number | null | undefined): Formatted {
+  if (!usable(won)) return noData()
+  return build(won / WON_PER_EOK, 0, '', true)
 }
 
 /** 평균 급여: 만 원 단위, 정수. 18,500만 원 */

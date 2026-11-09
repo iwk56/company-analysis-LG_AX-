@@ -7,8 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from app import ai_accounting, ai_tasks, enrich, llm, reports_api
-from app.employees import summarize
+from app import ai_accounting, ai_tasks, company_cache, enrich, llm, reports_api
+from tests import test_reports
+from tests.pdf_docs import sk_like_doc
 from tests.test_reports import THIS_YEAR, client, create, wait_done  # noqa: F401  (client는 pytest 픽스처)
 
 
@@ -62,7 +63,7 @@ AUDIT_ROW = {"rcept_no": "20260317000635", "bsns_year": "제78기\n(당기)", "a
 def env(client, monkeypatch):
     """가짜 AI + 가짜 공시 원문 + 가짜 직원 현황. 호출 횟수를 센다."""
     monkeypatch.setenv("LLM_PROVIDER", "fake")
-    calls = {"llm": [], "docs": 0, "emp": 0, "audit": 0, "list": 0}
+    calls = {"llm": [], "docs": 0, "audit": 0, "list": 0}
     state = {"audit": [AUDIT_ROW], "filings": []}
     calls["state"] = state
     real_fake = llm._fake
@@ -80,11 +81,6 @@ def env(client, monkeypatch):
             z.writestr(f"{rcept_no}.xml", DOC)
         return buf.getvalue()
 
-    async def fake_emp(_client, corp_code, year, raw_dir=None):
-        calls["emp"] += 1
-        return {"count": 34549, "avg_tenure_years": 13.4, "avg_salary_won": 185004892, "rcept_no": "R1", "settled_on": f"{year}-12-31",
-                "year": year, "url": "https://dart.fss.or.kr/x"}
-
     async def fake_audit(_client, corp_code, year, raw_dir=None):
         calls["audit"] += 1
         return state["audit"]
@@ -94,7 +90,13 @@ def env(client, monkeypatch):
         return state["filings"]
 
     monkeypatch.setattr(enrich, "load_document_zip", fake_zip)
-    monkeypatch.setattr(enrich, "fetch_employees", fake_emp)
+
+    async def fake_subs(_client, corp_code, year, raw_dir=None):  # 타법인 출자 현황 (2026-11-04)
+        return {"count": 2, "majority_count": 1, "rcept_no": "R1", "year": year, "url": None,
+                "items": [{"name": "SK hynix America Inc.", "purpose": "판매법인", "share": 100.0, "book_won": 1.0e11,
+                           "assets_won": None, "net_income_won": None}]}
+
+    monkeypatch.setattr(enrich, "fetch_subsidiaries", fake_subs)
     monkeypatch.setattr(enrich, "fetch_audit", fake_audit)
     monkeypatch.setattr(enrich, "fetch_corrections", fake_corrections)
 
@@ -103,6 +105,11 @@ def env(client, monkeypatch):
         return DISCLOSURES
 
     monkeypatch.setattr(enrich, "fetch_disclosures", fake_disclosures)
+    monkeypatch.setattr(test_reports, "FIXTURE_DOC", sk_like_doc())  # 가짜 응답의 인용이 검증을 통과하는 PDF 글
+    cache = company_cache.load_cache()
+    for entry in cache.values():
+        entry.setdefault("homepage", "https://www.skhynix.com")
+    company_cache.save_cache(cache)
     report_id = wait_done(client, create(client)["job_id"])["report_id"]
     return client, report_id, calls
 
@@ -122,29 +129,33 @@ def test_run_ai_extracts_verifies_and_writes(env):
     res = client.post(f"/api/reports/{report_id}/ai")
     assert res.status_code == 200
     e = res.json()["enrichments"]
-    assert {k: v["status"] for k, v in e.items()} == {k: "ok" for k in enrich.TASKS}
+    assert all(v["status"] == "ok" or (k == "business_web" and v["status"] == "empty") for k, v in e.items())
+    assert e["business_web"]["status"] in ("ok", "empty")
     seg = e["extract_segments"]["content"]
     assert [p["name"] for p in seg["products"]] == ["DRAM", "NAND Flash", "기타"]
     assert seg["products"][0]["current_won"] == 74_904_134_000_000 and round(seg["products"][0]["share"], 3) == 0.771
     assert round(seg["products"][0]["growth"], 3) == 0.675 and round(seg["overseas_share"], 3) == 0.98
     assert e["extract_rnd"]["content"]["amount_won"] == 6_732_527_000_000
     assert e["extract_finance"]["content"]["interest_expense_won"] == 923_703_000_000
-    assert e["employees"]["by"] == "code" and e["employees"]["content"]["count"] == 34549
+    assert "employees" not in e  # 직원 현황은 2026-11-04 삭제
     ov = e["write_overview"]
-    assert ov["content"]["bcg"]["segments"][0]["name"] == "DRAM"  # 비중·증감률은 위에서 코드가 계산한 값과 같은 숫자라 통과
-    assert ov["content"]["overview"] is None and any("기업 개요" in w for w in ov["warnings"])  # 예시 문장의 매출액 숫자는 이 가짜 리포트와 달라 버려진다
+    assert ov["content"]["bcg"] is None  # BCG 해석은 2026-11-04 삭제
+    assert ov["content"]["overview"].startswith("SK하이닉스는")
     assert e["extract_segments"]["by"] == "ai" and e["extract_segments"]["model"] == "fake"
     assert calls["llm"] == ["extract_segments", "extract_rnd", "extract_finance", "extract_going_concern", "extract_related_party",
-                            "write_accounting", "write_overview", "write_summaries", "write_external", "write_swot", "write_page4"]
+                            "write_accounting", "extract_position", "extract_mda", "extract_focus", "extract_business",
+                            "write_peers", "explain_income", "explain_cashflow", "explain_stability_ratios",
+                            "write_overview", "write_summaries", "write_external", "write_swot"]
+    assert e["balance_notes"]["by"] == "code" and e["balance_notes"]["status"] == "ok"
 
 
 def test_second_run_does_not_call_ai_again(env):
     client, report_id, calls = env
     client.post(f"/api/reports/{report_id}/ai")
-    before = (len(calls["llm"]), calls["docs"], calls["emp"], calls["audit"], calls["list"])
+    before = (len(calls["llm"]), calls["docs"], calls["audit"], calls["list"])
     again = client.post(f"/api/reports/{report_id}/ai")
     assert again.status_code == 200
-    assert (len(calls["llm"]), calls["docs"], calls["emp"], calls["audit"], calls["list"]) == before  # 저장본을 그대로 쓴다
+    assert (len(calls["llm"]), calls["docs"], calls["audit"], calls["list"]) == before  # 저장본을 그대로 쓴다
 
 
 def test_value_not_in_source_is_dropped_not_saved(env, monkeypatch):
@@ -203,13 +214,13 @@ def test_failed_extraction_blocks_writes_and_retry_runs_only_failed(env, monkeyp
     e = client.post(f"/api/reports/{report_id}/ai").json()["enrichments"]
     assert e["extract_segments"]["status"] == "failed" and "연결 실패" in e["extract_segments"]["message"]
     assert e["write_overview"]["status"] == "failed" and "앞 단계" in e["write_overview"]["message"]
-    assert e["extract_rnd"]["status"] == "ok" and e["employees"]["status"] == "ok"
+    assert e["extract_rnd"]["status"] == "ok"
     calls["llm"].clear()
     state["fail"] = False
     e = client.post(f"/api/reports/{report_id}/ai").json()["enrichments"]
     assert all(v["status"] == "ok" for v in e.values())
     # 성공해 둔 추출 2개는 다시 부르지 않는다. 7-B는 추출 실패로 '앞 단계 실패'였으므로 같이 다시 만든다
-    assert calls["llm"] == ["extract_segments", "write_overview", "write_summaries", "write_external", "write_swot", "write_page4"]
+    assert calls["llm"] == ["extract_segments", "write_overview", "write_summaries", "write_external", "write_swot"]
 
 
 def test_openai_blocked_marks_tasks_failed_but_report_still_opens(env, monkeypatch):
@@ -231,7 +242,7 @@ def test_document_download_failure_fails_extraction_tasks(env, monkeypatch):
     monkeypatch.setattr(enrich, "load_document_zip", boom)
     e = client.post(f"/api/reports/{report_id}/ai").json()["enrichments"]
     assert e["extract_rnd"]["status"] == "failed" and "공시 원문을 받지 못했습니다" in e["extract_rnd"]["message"]
-    assert e["employees"]["status"] == "ok"
+    assert e["income_notes"]["status"] == "failed"  # 원문이 없으면 주석 내역도 못 읽는다
 
 
 def test_concurrent_run_for_same_report_is_rejected(env, monkeypatch):
@@ -271,10 +282,27 @@ def test_net_vs_operating_period_prefers_recent_then_annual():
     assert ai_tasks.net_vs_operating_period(report) is None
 
 
-def test_employee_summary_weights_by_headcount():
-    rows = [{"sm": "23,037", "avrg_cnwk_sdytrn": "12.3", "jan_salary_am": "198,000,000", "rcept_no": "R", "stlm_dt": "2025-12-31"},
-            {"sm": "11,512", "avrg_cnwk_sdytrn": "15.7", "jan_salary_am": "159,000,000"}]
-    s = summarize(rows)
-    assert s["count"] == 34549 and s["avg_tenure_years"] == 13.4 and s["avg_salary_won"] == 185_004_892
-    assert summarize([{"sm": "-"}]) is None
-    assert summarize([{"sm": "10", "avrg_cnwk_sdytrn": "-", "jan_salary_am": "-"}])["avg_tenure_years"] is None
+def test_subsidiaries_summary_skips_total_and_sorts_by_book_value():
+    """타법인 출자 현황(2026-11-04): 합계 행을 빼고 장부가액 큰 순, 지분율 50% 이상 수를 센다."""
+    from app.subsidiaries import summarize
+    rows = [{"inv_prm": "작은회사", "trmend_blce_qota_rt": "30.5", "trmend_blce_acntbk_amount": "1,000", "rcept_no": "R"},
+            {"inv_prm": "큰회사", "invstmnt_purps": "경영참가", "trmend_blce_qota_rt": "100", "trmend_blce_acntbk_amount": "9,000",
+             "recent_bsns_year_fnnr_sttus_thstrm_ntpf": "(500)"},
+            {"inv_prm": "합 계", "trmend_blce_acntbk_amount": "10,000"}]
+    out = summarize(rows)
+    assert out["count"] == 2 and out["majority_count"] == 1 and [x["name"] for x in out["items"]] == ["큰회사", "작은회사"]
+    assert out["items"][0]["net_income_won"] == -500 and out["items"][0]["purpose"] == "경영참가"
+    assert summarize([{"inv_prm": "합계"}]) is None
+
+
+def test_web_news_saved_empty_by_old_code_is_retried(env):
+    client, report_id, _ = env
+    client.post(f"/api/reports/{report_id}/ai")
+    from app import db
+    from app.report_models import Enrichment
+    with db.SessionLocal() as s:  # 예전 코드처럼 기사 0건을 empty로 저장해 둔다
+        row = s.query(Enrichment).filter_by(report_id=report_id, key="web_news").one()
+        row.status, row.content, row.message = "empty", {"items": [], "searches": 1}, "실적 변화를 설명하는 기사를 찾지 못했습니다"
+        s.commit()
+    e = client.post(f"/api/reports/{report_id}/ai").json()["enrichments"]
+    assert e["web_news"]["status"] == "ok" and len(e["web_news"]["content"]["items"]) == 3

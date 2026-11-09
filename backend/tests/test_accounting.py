@@ -160,22 +160,31 @@ def test_going_concern_ai_says_yes_with_verified_quote_is_check(env, monkeypatch
     assert enrichments(client, report_id)["extract_going_concern"]["content"]["verdict"] == "check"
 
 
-def test_going_concern_quote_not_in_source_is_unverifiable(env, monkeypatch):
+def test_going_concern_quote_not_in_source_falls_back_to_clean_audit_opinion(env, monkeypatch):
     client, report_id, _ = env
     real = llm._fake
     monkeypatch.setattr(llm, "_fake", lambda t: llm.LlmResult({"has_material_uncertainty": False, "quote": "계속기업 불확실성 없음이라고 적혀 있음"}, "fake", 0, 0) if t == "extract_going_concern" else real(t))
     client.post(f"/api/reports/{report_id}/ai")
     gc = enrichments(client, report_id)["extract_going_concern"]
-    assert gc["status"] == "empty" and gc["content"] is None and "대조하지 못해" in gc["message"]
-    assert enrichments(client, report_id)["write_accounting"]["status"] == "ok"  # 확인 불가 항목이 있어도 요약은 만든다
+    # 근거를 원문과 맞추지 못했지만 감사의견이 적정·강조사항 없음이라 코드가 이상 없음으로 판정
+    assert gc["status"] == "ok" and gc["content"]["verdict"] == "clear" and gc["content"]["basis"] == "audit" and gc["content"]["quote"] is None
+    assert enrichments(client, report_id)["write_accounting"]["status"] == "ok"
 
 
-def test_going_concern_unanswered_is_unverifiable(env, monkeypatch):
+def test_going_concern_unanswered_falls_back_to_clean_audit_opinion(env, monkeypatch):
     client, report_id, _ = env
     real = llm._fake
     monkeypatch.setattr(llm, "_fake", lambda t: llm.LlmResult({"has_material_uncertainty": None, "quote": ""}, "fake", 0, 0) if t == "extract_going_concern" else real(t))
     client.post(f"/api/reports/{report_id}/ai")
-    assert enrichments(client, report_id)["extract_going_concern"]["status"] == "empty"
+    assert enrichments(client, report_id)["extract_going_concern"]["content"]["basis"] == "audit"
+
+
+def test_audit_fallback_only_for_clean_opinion_without_going_concern_emphasis():
+    clean = {"verdict": "clear", "opinion": "적정의견", "emphasis": []}
+    assert A.audit_fallback(clean).content == {"verdict": "clear", "basis": "audit", "quote": None, "opinion": "적정의견"}
+    assert A.audit_fallback({**clean, "verdict": "check", "opinion": "한정의견"}) is None
+    assert A.audit_fallback({**clean, "emphasis": ["계속기업 가정에 관한 중요한 불확실성"]}) is None
+    assert A.audit_fallback(None) is None
 
 
 # ───────────────────────── 특수관계자 판정과 원문 대조
@@ -288,7 +297,7 @@ def test_audit_fetch_failure_marks_failed_and_blocks_summary_until_retry(env, mo
     calls["llm"].clear()
     monkeypatch.setattr(enrich, "fetch_audit", good)
     e = client.post(f"/api/reports/{report_id}/ai").json()["enrichments"]
-    assert all(v["status"] == "ok" for v in e.values())
+    assert all(v["status"] == "ok" or (k == "business_web" and v["status"] == "empty") for k, v in e.items())
     assert [t for t in calls["llm"] if t != "write_overview" and t != "write_summaries"] == ["write_accounting"]  # 성공해 둔 추출은 다시 부르지 않는다
     assert calls["list"] == 1
 

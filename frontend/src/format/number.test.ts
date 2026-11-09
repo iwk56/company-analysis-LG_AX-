@@ -10,8 +10,10 @@ import {
   formatPrice,
   formatPeople,
   formatWonCard,
+  formatWonCardDelta,
   formatWonMan,
   formatWonTable,
+  formatWonTableDelta,
   formatYears,
   signalView,
 } from './number'
@@ -55,6 +57,11 @@ describe('formatWonTable (억 원, 쉼표, 숫자만)', () => {
   it('값이 없으면 자료 없음', () => {
     expect(formatWonTable(null).text).toBe('자료 없음')
   })
+  it('증감 금액은 양수·음수 부호를 붙이고 반올림된 0에는 붙이지 않는다', () => {
+    expect(formatWonTableDelta(123_400_000).text).toBe('+1')
+    expect(formatWonTableDelta(-567_800_000).text).toBe('−6')
+    expect(formatWonTableDelta(40_000_000).text).toBe('0')
+  })
 })
 
 describe('비율·증감·배수', () => {
@@ -70,6 +77,10 @@ describe('비율·증감·배수', () => {
     expect(formatChange(2.308036551694231).text).toBe('+230.8%')
     expect(formatChange(-0.26569772267975883)).toEqual({ text: '−26.6%', negative: true, muted: false })
     expect(formatChange(0).text).toBe('0.0%')
+  })
+  it('카드의 증감 금액은 조 원 또는 억 원 단위에 부호를 붙인다', () => {
+    expect(formatWonCardDelta(1_200_000_000_000).text).toBe('+1.2조 원')
+    expect(formatWonCardDelta(-35_000_000_000).text).toBe('−350억 원')
   })
   it('비율 차이는 %p', () => {
     expect(formatPercentPoint(0.3264943567030315).text).toBe('+32.6%p')

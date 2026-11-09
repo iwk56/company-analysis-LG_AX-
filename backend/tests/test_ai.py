@@ -162,3 +162,12 @@ def test_missing_model_name_is_reported_without_calling(monkeypatch):
     with pytest.raises(LlmError) as e:
         run(go())
     assert "OPENAI_MODEL_WRITE" in e.value.message
+
+
+def test_period_numbers_are_not_unknown_numbers():
+    """2026-11-04: 연도·월·일·분기 같은 기간 표시는 '자료에 없는 숫자'로 보지 않는다. 금액·비율은 그대로 확인한다."""
+    from app.ai_verify import unknown_numbers as u
+    assert u("2026년 반기 매출은 131.9조 원으로 늘었습니다.", {"131.9"}) == set()
+    assert u("2026.01~06 누적, 3분기, 1~6월 영업이익 98.2조", {"98.2"}) == set()
+    assert u("2025년 12월 31일 기준 1,234억 원", set()) == {"1234"}
+    assert u("매출 2026조 원", set()) == {"2026"} and u("부채비율 45.9%", set()) == {"45.9"}

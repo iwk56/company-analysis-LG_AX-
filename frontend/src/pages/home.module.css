@@ -1,0 +1,54 @@
+/* 처음 화면 (2026-11-03): 가운데 큰 질문 + 둥근 입력창 하나 (PDF 첨부 또는 기업 이름 검색) */
+.hero { min-height: calc(100vh - 180px); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.title { font-size: 1.9rem; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.02em; text-align: center; }
+.lead { color: var(--sub); margin: 0 0 28px; text-align: center; }
+.aiMode { width: 100%; max-width: 720px; margin: 0 0 18px; padding: 12px 16px; display: flex; align-items: center;
+  justify-content: space-between; gap: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; }
+.aiModeHelp { color: var(--sub); font-size: 0.8rem; margin: 4px 0 0; }
+.aiModeButton { flex: none; border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; background: #fff;
+  color: var(--text); font-weight: 600; cursor: pointer; }
+.aiModeButton:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.aiModeButton:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.composer { width: 100%; max-width: 720px; background: var(--card); border: 1px solid var(--line); border-radius: 28px;
+  box-shadow: 0 2px 12px rgba(31, 41, 51, 0.06); padding: 10px 10px 10px 14px; display: flex; flex-direction: column; gap: 8px;
+  transition: border-color 0.15s, box-shadow 0.15s; }
+.line { display: flex; align-items: center; gap: 8px; }
+
+/* 입력창 안의 올린 파일 (GPT 첨부처럼) */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 4px 0; }
+.file { position: relative; display: flex; align-items: center; gap: 10px; max-width: 100%; min-width: 260px; flex: 1 1 300px;
+  border: 1px solid var(--line); border-radius: 14px; padding: 8px 32px 8px 8px; background: #fafbfc; }
+.fileerror { border-color: #f1c4c4; background: #fff6f6; }
+.fileicon { flex: none; width: 36px; height: 36px; border-radius: 8px; background: #e5484d; color: #fff; font-size: 0.66rem; font-weight: 700;
+  display: grid; place-items: center; letter-spacing: 0.02em; }
+.filetext { display: flex; flex-direction: column; min-width: 0; }
+.filename { font-size: 0.86rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.filenote { font-size: 0.78rem; color: var(--sub); display: flex; align-items: center; gap: 6px; word-break: keep-all; }
+.fileerror .filenote { color: var(--bad); }
+.fileclose { position: absolute; top: 6px; right: 8px; border: 0; background: none; color: var(--sub); font-size: 1rem; cursor: pointer; }
+.inner { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--sub); padding: 0 6px 4px; }
+.composer:focus-within { border-color: #b8c2d0; box-shadow: 0 4px 18px rgba(31, 41, 51, 0.1); }
+.dragging { border-color: var(--accent); border-style: dashed; background: #f3f6fc; }
+
+.attach { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: #fff; color: var(--text);
+  font-size: 1.4rem; line-height: 1; display: grid; place-items: center; cursor: pointer; }
+.attach:hover:not(:disabled) { background: #f1f3f6; }
+.input { flex: 1; border: 0; outline: none; font-size: 1.02rem; padding: 10px 4px; background: transparent; color: var(--text); min-width: 0; }
+.send { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--text); color: #fff; font-size: 1.1rem;
+  display: grid; place-items: center; cursor: pointer; }
+.send:disabled, .attach:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.status { width: 100%; max-width: 720px; margin-top: 14px; font-size: 0.92rem; }
+.chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: #eef2f8; color: var(--text); }
+.spinner { width: 14px; height: 14px; border: 2px solid #b8c2d0; border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.hints { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 18px; }
+.hint { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 7px 14px; font-size: 0.88rem; color: var(--sub); cursor: pointer; }
+.hint:hover { color: var(--text); border-color: #b8c2d0; }
+.foot { color: var(--sub); font-size: 0.8rem; margin-top: 22px; text-align: center; }
+
+.results { width: 100%; max-width: 720px; margin-top: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 4px 16px; }
+.company { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.companytext { display: flex; flex-direction: column; min-width: 0; gap: 2px; }

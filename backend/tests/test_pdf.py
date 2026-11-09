@@ -254,3 +254,61 @@ def test_corrected_report_cover_found_by_bookmark_and_marked_corrected():
     r = verify(corrected_doc(outline=False), "annual", NAME, 2025)  # 책갈피가 없어도 앞 10쪽에서 찾는다
     assert r.accepted and r.cover.page == 7 and r.cover.corrected
     assert not verify(load("annual_ok.pdf"), "annual", NAME, 2025).cover.corrected
+
+
+# ───────── 처음 화면: PDF로 기업 찾기 (2026-11-03)
+from app import reports_api  # noqa: E402
+from app.pdf_identify import find_company, name_variants  # noqa: E402
+
+CORPS = [{"corp_code": "00164779", "corp_name": "SK하이닉스", "stock_code": "000660"},
+         {"corp_code": "00401731", "corp_name": "LG전자", "stock_code": "066570"},
+         {"corp_code": "1", "corp_name": "엘지스팩", "stock_code": "999999"}]
+
+
+def test_find_company_by_stock_code_then_cover_name():
+    with_code = PdfDoc(["표지", "회사는 유가증권시장에서 거래되고 있으며, 종목코드는 '000660'입니다."], [])
+    assert find_company(CORPS, with_code, "다른회사 주식회사")["corp_name"] == "SK하이닉스"  # 종목코드가 먼저
+    no_code = PdfDoc(["표지"], [])
+    assert find_company(CORPS, no_code, "LG전자주식회사")["corp_name"] == "LG전자"
+    assert find_company(CORPS, no_code, "에스케이하이닉스 주식회사")["corp_name"] == "SK하이닉스"  # 한글로 적은 그룹명
+    assert find_company(CORPS, no_code, "없는회사 주식회사") is None and find_company(CORPS, no_code, None) is None
+    assert find_company(CORPS, PdfDoc(["종목코드: 999999"], []), None) is None  # 스팩은 대상 아님
+    assert "sk하이닉스" in name_variants("에스케이하이닉스 주식회사")
+
+
+@pytest.fixture
+def identify_api(api, monkeypatch):
+    async def corps(_client):
+        return [{"corp_code": "00164779", "corp_name": "테스트전자", "stock_code": "000660"}]
+
+    monkeypatch.setattr(reports_api, "load_listed_corps", corps)
+    return api
+
+
+def identify(c, name, data=None):
+    return c.post("/api/pdf/identify", files={"file": (name, data if data is not None else (PDF_DIR / name).read_bytes(),
+                                                       "application/pdf")})
+
+
+def test_identify_finds_company_and_checks_annual_slot(identify_api):
+    r = identify(identify_api, "annual_ok.pdf")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["company"]["corp_code"] == "00164779" and body["company"]["industry_label"]
+    assert body["slot"] == "annual" and body["upload"]["accepted"] and pdf_uploads.store.get(body["upload"]["upload_id"])
+    half = identify(identify_api, "interim_half.pdf").json()  # 반기보고서를 먼저 올려도 받는다
+    assert half["slot"] == "interim" and half["upload"]["accepted"] and half["company"]["corp_code"] == "00164779"
+
+
+def test_identify_rejects_scan_bad_file_and_unknown_company(identify_api, monkeypatch):
+    r = identify(identify_api, "scan.pdf")
+    assert r.status_code == 400 and r.json()["detail"] == UNREADABLE
+    r = identify(identify_api, "x.pdf", data=b"not a pdf")
+    assert r.status_code == 400 and "PDF 파일을 열지 못했습니다" in r.json()["detail"]
+
+    async def none(_client):
+        return []
+
+    monkeypatch.setattr(reports_api, "load_listed_corps", none)
+    r = identify(identify_api, "annual_ok.pdf")
+    assert r.status_code == 400 and "기업 이름으로 찾기" in r.json()["detail"]

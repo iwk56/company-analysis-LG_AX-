@@ -9,6 +9,7 @@ DATA_DIR = BACKEND_DIR / "data"
 load_dotenv(BACKEND_DIR / ".env")
 
 DART_BASE_URL = "https://opendart.fss.or.kr/api"
+_runtime_live_ai_override: bool | None = None
 
 
 def get_dart_api_key() -> str:
@@ -62,6 +63,19 @@ def get_openai_api_key() -> str:
     return key
 
 
+def web_news_enabled() -> bool:
+    """웹 검색 작업을 켠다. 기본 켬, WEB_NEWS=0이면 검색 비용을 아끼기 위해 모두 끈다."""
+    return os.environ.get("WEB_NEWS", "1").strip() != "0"
+
+
 def live_ai_allowed() -> bool:
-    """실제 AI 호출 허용 스위치. 부서 공유 키라 개발 중에는 꺼 두고, 허락받은 확인 때만 LLM_ALLOW_LIVE=1로 켠다."""
+    """실제 AI 호출 허용 상태. 런타임 설정이 없으면 .env 값을 따른다."""
+    if _runtime_live_ai_override is not None:
+        return _runtime_live_ai_override
     return os.environ.get("LLM_ALLOW_LIVE", "").strip() == "1"
+
+
+def set_runtime_live_ai(enabled: bool) -> None:
+    """현재 서버 실행 중에만 적용되는 실제 AI 호출 허용 설정."""
+    global _runtime_live_ai_override
+    _runtime_live_ai_override = enabled

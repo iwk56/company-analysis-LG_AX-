@@ -16,10 +16,15 @@ const KIND_LABELS = { annual: '사업보고서', half: '반기보고서', q3: '3
 
 export default function UploadReports() {
   const navigate = useNavigate()
-  const company = (useLocation().state as { company?: SearchItem } | null)?.company
+  const state = useLocation().state as { company?: SearchItem; uploads?: Partial<Record<PdfSlot, PdfUploadResult>> } | null
+  const company = state?.company
   const [guide, setGuide] = useState<PdfGuide | null>(null)
   const [guideError, setGuideError] = useState<string | null>(null)
-  const [slots, setSlots] = useState<Record<PdfSlot, SlotState>>({ annual: { status: 'empty' }, interim: { status: 'empty' } })
+  const [slots, setSlots] = useState<Record<PdfSlot, SlotState>>({
+    // 처음 화면에서 올린 PDF가 있으면 그 확인 결과로 칸을 채워 시작한다
+    annual: state?.uploads?.annual ? { status: 'done', result: state.uploads.annual } : { status: 'empty' },
+    interim: state?.uploads?.interim ? { status: 'done', result: state.uploads.interim } : { status: 'empty' },
+  })
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -33,7 +38,7 @@ export default function UploadReports() {
   if (!company) {
     return (
       <section className={styles.card}>
-        <p>분석할 기업이 정해지지 않았습니다. <Link to="/">홈에서 기업을 먼저 검색해 주세요.</Link></p>
+        <p>분석할 기업이 정해지지 않았습니다. <Link to="/">처음 화면에서 보고서 PDF를 먼저 올려 주세요.</Link></p>
       </section>
     )
   }

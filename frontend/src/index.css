@@ -1,10 +1,10 @@
 :root {
-  --bg: #f6f7f9;
+  --bg: #f5f5f2;
   --card: #ffffff;
-  --text: #1f2933;
-  --sub: #5f6b7a;
-  --line: #dde1e7;
-  --accent: #2456a6;
+  --text: #263247;
+  --sub: #626d7d;
+  --line: #e0e3e9;
+  --accent: #426ba9;
   --neg: #c62828; /* 음수 */
   --good: #1b873f;
   --warn: #b7791f;
@@ -18,3 +18,6 @@ body { margin: 0; }
 a { color: var(--accent); }
 button { font: inherit; cursor: pointer; }
 input { font: inherit; }
+
+/* 한국어 줄바꿈: 낱말 중간에서 자르지 않는다 ("없습니/다" 방지), 아주 긴 영문·숫자만 필요할 때 자른다 (2026-11-03) */
+body { word-break: keep-all; overflow-wrap: break-word; line-height: 1.6; }

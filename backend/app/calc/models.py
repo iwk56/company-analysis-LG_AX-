@@ -9,6 +9,9 @@ FIRST_YEAR = "해당 없음(전기 자료 없음)"
 ZERO_DENOMINATOR = "해당 없음(분모 0)"
 NEGATIVE_DENOMINATOR = "해당 없음(분모 음수)"
 CAPITAL_IMPAIRED = "해당 없음(자본잠식)"
+TURNED_PROFIT = "흑자전환"
+TURNED_LOSS = "적자전환"
+STILL_LOSS = "적자지속"
 
 
 @dataclass(frozen=True)
@@ -31,6 +34,22 @@ class YearFinancials:
     cfo: float | None = None  # 영업활동 현금흐름
     cfi: float | None = None  # 투자활동 현금흐름
     cff: float | None = None  # 재무활동 현금흐름
+    # 2026-11-04 손익계산서 분석용
+    gross_profit: float | None = None  # 매출총이익
+    sga: float | None = None  # 판매비와관리비
+    finance_income: float | None = None  # 금융수익
+    finance_costs: float | None = None  # 금융비용
+    pretax_income: float | None = None  # 법인세비용차감전순이익
+    income_tax: float | None = None  # 법인세비용
+    # 2026-11-04 현금흐름 분석용 (DART는 지출도 양수로 주는 경우가 많아 수집 때 절댓값으로 맞춘다)
+    capex_ppe: float | None = None  # 유형자산의 취득
+    capex_intangible: float | None = None  # 무형자산의 취득
+    dividends_paid: float | None = None  # 배당금의 지급
+    buyback: float | None = None  # 자기주식의 취득
+    borrowing_in: float | None = None  # 차입금의 차입
+    borrowing_out: float | None = None  # 차입금의 상환
+    tax_paid: float | None = None  # 법인세의 납부
+    cash_end: float | None = None  # 기말 현금및현금성자산
 
 
 @dataclass(frozen=True)

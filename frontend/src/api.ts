@@ -35,6 +35,7 @@ export interface SearchItem {
   stock_code: string
   industry_label: string
   is_financial: boolean
+  homepage?: string | null
 }
 export interface SearchResult {
   query: string
@@ -42,6 +43,11 @@ export interface SearchResult {
   message: string | null
   warning: string | null
   items: SearchItem[]
+}
+export interface AiMode {
+  provider: string
+  live: boolean
+  started_at: string
 }
 
 export interface JobStep {
@@ -110,6 +116,8 @@ export interface CompetitorInfo {
   industry_name: string | null
   included: boolean
   excluded_reason: string | null
+  pick_reason?: string | null // 2026-11-04 자동 선정 이유
+  picked_by?: 'ai' | 'industry' | null
 }
 
 export interface ComparisonColumn {
@@ -162,6 +170,8 @@ export interface ArticleList {
   expired: boolean
   expires_at: string
   items: ArticleItem[]
+  /** 검색어별 묶음 (받은 순서 그대로). 주제별 검색어(2026-11-03) 이전 리포트는 label 없는 묶음 하나 */
+  groups?: { label: string | null; query: string; items: ArticleItem[] }[]
 }
 export interface MacroSeries {
   key: 'usd_krw' | 'base_rate' | string
@@ -201,13 +211,6 @@ export interface Enrichment<T = unknown> {
   message: string | null
   warnings: string[]
   created_at: string
-}
-export interface EmployeesContent {
-  count: number
-  avg_tenure_years: number | null
-  avg_salary_won: number | null
-  year: number
-  url: string | null
 }
 export interface SegmentProduct { name: string; current_won: number; prior_won: number | null; share: number | null; growth: number | null }
 export interface SegmentsContent { year: number; products: SegmentProduct[]; overseas_share: number | null }
@@ -251,7 +254,7 @@ export interface CorrectionsContent {
   period_start: string
   period_end: string
 }
-export interface GoingConcernContent { verdict: 'clear' | 'check'; basis: 'emphasis' | 'ai'; quote: string }
+export interface GoingConcernContent { verdict: 'clear' | 'check'; basis: 'emphasis' | 'ai' | 'audit'; quote: string | null; opinion?: string | null }
 export interface TextAmounts { state: 'none' | 'found' | 'unverified'; items: { party: string | null; amount_text: string }[] }
 export interface RelatedPartyContent {
   verdict: Verdict
@@ -292,8 +295,7 @@ export interface ExternalContent {
     cost?: { direction: Direction3; reason: string }
     sources?: string[]
   }
-  watch: { checks: SourcedItem[]; questions: SourcedItem[] }
-  summaries: Partial<Record<'pest' | 'five_forces' | 'topics' | 'macro' | 'watch', string>>
+  summaries: Partial<Record<'pest' | 'five_forces' | 'topics' | 'macro', string>>
   disclosure_period: { period_start: string | null; period_end: string | null; total: number | null }
   source_index: SourceIndex
 }
@@ -302,10 +304,65 @@ export interface SwotContent {
   swot: Record<'strengths' | 'weaknesses' | 'opportunities' | 'threats', SourcedItem[]>
   source_index: SourceIndex
 }
-export type RoleKey = 'fpa' | 'accounting' | 'treasury' | 'research'
-export interface Page4Content {
+// ───────── 8-D 사업보고서 PDF에서 뽑은 내용 (인용은 코드가 PDF 원문과 대조해 쪽 번호를 붙인 것만 남는다)
+export interface PdfQuote { text: string; page: number; doc: string; section_label: string; cite: string; url: string | null }
+export interface PdfPart { summary: string | null; quotes: PdfQuote[] }
+/** 시장점유율 행 (2026-11-04). 값·기간은 원문 대조를 거친 것. share는 첫 기간(원문 표 맨 앞 칸) 값 */
+export interface MarketShare { product: string; periods: string[]; values: string[]; shares: number[]; share: number; quote: PdfQuote; source: string | null }
+export interface PositionContent {
+  position: (PdfPart & { competitors?: string[]; market_shares?: MarketShare[] }) | null
+  customers: { quote: PdfQuote; share: number | null; share_text: string | null; scope: string | null }[]
+  risks: { quote: PdfQuote; plain: string | null }[]
+}
+export type MdaContent = PdfPart
+export interface FocusContent {
+  rnd: PdfPart | null
+  investment: PdfPart | null
+  new_business: PdfPart | null
+  changes: Partial<Record<'rnd' | 'investment', { text: string | null; quotes: PdfQuote[] }>> | null
+  interim_label: string | null
+}
+export interface ChecklistItem { key: string; label: string; status: 'check' | 'clear' | 'info' | 'unknown'; reasons: string[]; text: string }
+export interface ChecklistContent { base_year: number; items: ChecklistItem[]; note: string | null; concentration_note: string | null }
+// ───────── 사업 구조 탭 (2026-11-04)
+export interface BusinessContent {
+  products: PdfPart | null
+  sales_mix: PdfPart | null
+  production: PdfPart | null
+  materials: PdfPart | null
+  orders: PdfPart | null
+  segments: PdfPart | null
+}
+export interface BusinessWebItem { topic: 'region' | 'channel'; year: number; claim: string; title: string; url: string }
+export interface BusinessWebContent { items: BusinessWebItem[]; searches: number }
+export interface SubsidiariesContent {
+  count: number
+  majority_count: number
+  year: number
+  url: string | null
+  items: { name: string; purpose: string | null; share: number | null; book_won: number | null; assets_won: number | null; net_income_won: number | null }[]
+}
+export interface PeersContent {
   summary: string | null
-  tasks: { title: string; detail: string | null; basis: { key: string; label: string }[]; capability: string | null; ideas: Record<RoleKey, string | null> }[]
+  strengths: { text: string; basis: string[] }[]
+  advantages: { text: string; basis: string[] }[]
+  weaknesses: { text: string; basis: string[] }[]
+  opportunities: { text: string; basis: string[] }[]
+  peers: string[]
+}
+export interface BalanceNoteItem {
+  key: string
+  name: string
+  group: 'assets' | 'liabilities' | 'equity'
+  prior: number
+  current: number
+  change: number
+  note_title: string | null
+  note_excerpt: string | null
+}
+export interface BalanceNotesContent {
+  year: number
+  items: BalanceNoteItem[]
 }
 export interface Enrichments {
   audit_opinion?: Enrichment<AuditContent>
@@ -313,7 +370,6 @@ export interface Enrichments {
   extract_going_concern?: Enrichment<GoingConcernContent>
   extract_related_party?: Enrichment<RelatedPartyContent>
   write_accounting?: Enrichment<AccountingWriteContent>
-  employees?: Enrichment<EmployeesContent>
   extract_segments?: Enrichment<SegmentsContent>
   extract_rnd?: Enrichment<RndContent>
   extract_finance?: Enrichment<FinanceContent>
@@ -322,7 +378,39 @@ export interface Enrichments {
   disclosures?: Enrichment<DisclosuresContent>
   write_external?: Enrichment<ExternalContent>
   write_swot?: Enrichment<SwotContent>
-  write_page4?: Enrichment<Page4Content>
+  extract_position?: Enrichment<PositionContent>
+  extract_mda?: Enrichment<MdaContent>
+  extract_focus?: Enrichment<FocusContent>
+  checklist?: Enrichment<ChecklistContent>
+  extract_business?: Enrichment<BusinessContent>
+  business_web?: Enrichment<BusinessWebContent>
+  subsidiaries?: Enrichment<SubsidiariesContent>
+  write_peers?: Enrichment<PeersContent>
+  income_notes?: Enrichment<IncomeNotesContent>
+  explain_income?: Enrichment<ExplainIncomeContent>
+  web_news?: Enrichment<WebNewsContent>
+  explain_cashflow?: Enrichment<ExplainCashContent>
+  explain_profit_ratios?: Enrichment<ExplainRatiosContent>
+  explain_stability_ratios?: Enrichment<ExplainRatiosContent>
+  balance_notes?: Enrichment<BalanceNotesContent>
+}
+// ───────── 2026-11-05 비율 지표 해석: 실적 탭(수익성·성장성) · 재무상태 탭(안정성·활동성), 묶음 이름(한글)을 그대로 키로 쓴다
+export interface ExplainRatiosContent {
+  groups: Partial<Record<'수익성' | '성장성' | '안정성' | '활동성', { text: string; basis: string[] }>>
+  sources: Record<string, string>
+}
+export interface ExplainCashContent {
+  steps: Partial<Record<'operating' | 'investing' | 'financing' | 'fcf', { text: string; basis: string[] }>>
+  sources: Record<string, string>
+}
+export interface WebNewsItem { step: 'revenue' | 'gross' | 'sga' | 'non_operating' | 'price'; claim: string; title: string; publisher: string; date: string; url: string }
+export interface WebNewsContent { items: WebNewsItem[]; searches: number }
+// ───────── 2026-11-04 손익계산서 '왜 이렇게 됐나': 주석 내역(코드)과 단계별 원인 설명(AI)
+export interface NoteRow { group: string | null; item: string; current: number; prior: number | null; change: number | null; is_total: boolean }
+export type IncomeNotesContent = Partial<Record<'sga' | 'finance' | 'other', { title: string; rows: NoteRow[] }>>
+export interface ExplainIncomeContent {
+  steps: Partial<Record<'revenue' | 'gross' | 'sga' | 'non_operating' | 'tax', { text: string; basis: string[] }>>
+  sources: Record<string, string>
 }
 
 export type PdfSlot = 'annual' | 'interim'
@@ -392,6 +480,9 @@ export interface ReportDetail {
   recent_reason: string | null
   results: {
     ratios: Record<string, MetricMap>
+    balance_details?: Record<string, {
+      accounts: Record<'assets' | 'liabilities' | 'equity', { key: string; name: string; value: number }[]>
+    }>
     dupont: Record<string, {
       metrics: MetricMap
       driver: { factor: string; changes: Record<string, number> } | null
@@ -405,6 +496,8 @@ export interface ReportDetail {
       operating_margin_prior: Metric
     } | null
     comparison?: Comparison
+    income?: Record<string, unknown> // 2026-11-04 손익계산서 분석 (report/income.tsx에서 모양을 정함)
+    cash?: unknown // 2026-11-04 현금흐름 분석 (report/cash.tsx에서 모양을 정함)
   }
   sources: { kind: string; year: number; label: string; rcept_no: string; url: string }[]
   articles: ArticleList | null
@@ -412,6 +505,7 @@ export interface ReportDetail {
   stocks?: StockSeries[] | null // null·없음 = 주가 수집 기능 이전에 만든 리포트
   enrichments: Enrichments
   ai_pending: string[] // 아직 만들지 않은 공시 확인·AI 작업 (기능이 나중에 생겨 기존 리포트에 없는 것 포함)
+  ai_retryable: string[] // 현재 코드에서 다시 실행할 수 있는 실패 작업
   comments: Record<string, ReportComment>
   pdfs?: ReportPdf[] // 빈 목록 = PDF 기능 이전에 만든 리포트
 }
@@ -419,11 +513,12 @@ export interface ReportDetail {
 export const searchCompanies = (q: string) =>
   request<SearchResult>(`/api/companies/search?q=${encodeURIComponent(q)}`)
 
-/** 확인된 사업보고서 PDF(필수)·반기/3분기 PDF(선택)로 리포트를 만든다. 경쟁사는 화면에서 보내지 않는다(구 경쟁사 선택 화면만 사용) */
+/** 리포트를 만든다. PDF는 선택(없으면 DART 원문 자동). 경쟁사를 비워 두면 서버가 업종·시가총액·AI로 자동 선정한다(2026-11-04) */
 export const createReport = (
   corpCode: string,
   uploads: { annual: string | null; interim?: string | null },
   competitors: string[] = [],
+  autoCompetitors = true,
 ) =>
   request<Job>('/api/reports', {
     method: 'POST',
@@ -433,6 +528,7 @@ export const createReport = (
       annual_upload_id: uploads.annual,
       interim_upload_id: uploads.interim ?? null,
       competitors,
+      auto_competitors: autoCompetitors && competitors.length === 0,
     }),
   })
 
@@ -449,12 +545,26 @@ export function uploadPdf(corpCode: string, slot: PdfSlot, file: File, otherUplo
   return request<PdfUploadResult>('/api/pdf/uploads', { method: 'POST', body: form })
 }
 
+/** 처음 화면: 보고서 PDF로 분석 기업을 찾고 종류에 맞는 칸(사업보고서 / 반기·3분기)의 확인까지 한다 (못 찾으면 ApiError 400) */
+export function identifyPdf(file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  return request<{ company: SearchItem; slot: PdfSlot; upload: PdfUploadResult }>('/api/pdf/identify', { method: 'POST', body: form })
+}
+
 export const getJob = (jobId: string) => request<Job>(`/api/reports/jobs/${jobId}`)
 
 export const listReports = (q?: string) =>
   request<{ count: number; items: ReportSummary[] }>(`/api/reports${q ? `?q=${encodeURIComponent(q)}` : ''}`)
 
 export const getReport = (id: number) => request<ReportDetail>(`/api/reports/${id}`)
+export const getAiMode = () => request<AiMode>('/api/ai-mode')
+export const setAiMode = (live: boolean) =>
+  request<AiMode>('/api/ai-mode', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ live }),
+  })
 
 export const deleteReport = (id: number) => request<{ deleted: number }>(`/api/reports/${id}`, { method: 'DELETE' })
 
@@ -470,4 +580,5 @@ export const retryJob = (jobId: string) => request<Job>(`/api/reports/jobs/${job
 /** 공시 확인·AI 작업 중 아직 없거나 실패한 것만 실행한다 (이미 만든 해석은 다시 만들지 않는다) */
 export const refreshArticles = (reportId: number) =>
   request<{ articles: ArticleList }>(`/api/reports/${reportId}/articles/refresh`, { method: 'POST' })
-export const runAi = (reportId: number) => request<{ enrichments: Enrichments }>(`/api/reports/${reportId}/ai`, { method: 'POST' })
+export const runAi = (reportId: number) =>
+  request<{ enrichments: Enrichments; ai_retryable: string[] }>(`/api/reports/${reportId}/ai`, { method: 'POST' })

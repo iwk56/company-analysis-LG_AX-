@@ -8,6 +8,8 @@ import { useFold } from './foldData'
 import type { SectionKey } from './sectionKeys'
 
 export const MAX_COMMENT_LENGTH = 1000
+/** 2026-11-03 사용자 요청으로 화면에서 "내 코멘트"를 모두 숨긴다. 코드·저장된 코멘트·API는 그대로 둔다 (다시 쓰려면 true) */
+export const SHOW_COMMENTS = false
 export const UNSAVED_MESSAGE = '저장하지 않은 코멘트가 있습니다. 이동하면 쓰던 내용이 사라집니다. 이동할까요?'
 
 interface CommentsState {
@@ -77,7 +79,7 @@ export function SectionCard({ sectionKey, children }: { sectionKey: SectionKey; 
     return (
       <section className={styles.card} data-section={sectionKey}>
         {children}
-        <CommentBox sectionKey={sectionKey} />
+        {SHOW_COMMENTS && <CommentBox sectionKey={sectionKey} />}
       </section>
     )
   }
@@ -90,11 +92,11 @@ export function SectionCard({ sectionKey, children }: { sectionKey: SectionKey; 
   return (
     <section className={`${styles.card} ${styles.foldable} ${fold.open ? '' : styles.folded}`} data-section={sectionKey} onClick={onClick}>
       <div className={styles.foldbar}>
-        {!fold.open && hasComment && <span className={styles.hascomment}>코멘트 있음</span>}
+        {SHOW_COMMENTS && !fold.open && hasComment && <span className={styles.hascomment}>코멘트 있음</span>}
         <button type="button" className={styles.link} aria-expanded={fold.open} onClick={fold.toggle}>{fold.open ? '접기 ▴' : '펼치기 ▾'}</button>
       </div>
       {children}
-      <CommentBox sectionKey={sectionKey} />
+      {SHOW_COMMENTS && <CommentBox sectionKey={sectionKey} />}
     </section>
   )
 }

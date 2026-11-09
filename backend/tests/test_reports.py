@@ -70,7 +70,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(reports_api, "load_listed_corps", fake_load)
     monkeypatch.setattr(jobs, "new_fetcher", lambda c: FakeFetcher())
 
-    async def fake_news(_client, query, today=None):  # 네이버를 부르지 않는다
+    async def fake_news(_client, query, display=30, sort="date", today=None):  # 네이버를 부르지 않는다
         return []
 
     async def fake_macro(_client, today=None):  # ECOS를 부르지 않는다
@@ -84,6 +84,10 @@ def client(tmp_path, monkeypatch):
     async def fake_enrich(report_id, lock):  # 공시 원문·AI는 부르지 않는다 (해당 테스트는 test_enrich.py)
         return None
 
+    async def fake_dart_records(_client, corp_code):  # DART 공시 원문을 받지 않는다 (PDF 없이 만들 때). 해당 테스트는 아래
+        return THIS_YEAR, []
+
+    monkeypatch.setattr(jobs, "fetch_dart_records", fake_dart_records)
     monkeypatch.setattr(jobs, "fetch_news", fake_news)
     monkeypatch.setattr(jobs, "fetch_macro", fake_macro)
     monkeypatch.setattr(jobs, "enrich_report", fake_enrich)
@@ -141,7 +145,7 @@ def test_create_list_detail_delete_flow(client):
     assert latest["revenue"] == 10000 and isinstance(latest["revenue"], int)
     assert detail["data_as_of"] == f"{THIS_YEAR}-12-31"  # 최근 실적이 없으면 기준 사업연도 말
     assert detail["recent_results"] is None and detail["recent_reason"]
-    assert set(detail["results"]) == {"ratios", "dupont", "cashflow", "signals", "comparison"}
+    assert set(detail["results"]) == {"ratios", "dupont", "cashflow", "signals", "comparison", "income", "cash"}
     assert detail["results"]["ratios"][str(THIS_YEAR)]["debt_ratio"]["value"] is not None
     assert detail["sources"][0]["url"].startswith("https://dart.fss.or.kr/dsaf001/main.do?rcpNo=")
     assert len(detail["sources"]) == 5
@@ -154,7 +158,7 @@ def test_create_list_detail_delete_flow(client):
 def test_delete_removes_child_rows_but_keeps_company(client):
     rid = wait_done(client, create(client)["job_id"])["report_id"]
     before = counts()
-    assert before["financial_years"] == 5 and before["calc_results"] == 5 and before["sources"] == 5
+    assert before["financial_years"] == 5 and before["calc_results"] == 7 and before["sources"] == 5
     client.delete(f"/api/reports/{rid}")
     after = counts()
     assert after["reports"] == after["financial_years"] == after["calc_results"] == after["sources"] == 0
@@ -345,7 +349,7 @@ def test_retry_rejects_unknown_and_non_failed_jobs(client):
 def test_report_without_competitors_saves_pdf_sections_and_target_valuation(client):
     started = create(client, competitors=(), interim=True)
     assert [s["key"] for s in started["steps"]] == ["pdf", "collect", "recent", "news", "macro", "stocks", "calc", "save", "ai"]
-    assert started["steps"][0]["label"] == "PDF 읽기"
+    assert started["steps"][0]["label"] == "보고서 원문 읽기"
     job = wait_done(client, started["job_id"])
     assert job["status"] == "done", job
     d = client.get(f"/api/reports/{job['report_id']}").json()
@@ -375,8 +379,8 @@ def test_create_requires_confirmed_annual_pdf_of_same_company(client):
     def post(**body):
         return client.post("/api/reports", json={"corp_code": "00164779", **body})
 
-    r = post()
-    assert r.status_code == 400 and "사업보고서 PDF를 먼저" in r.json()["detail"]
+    r = post(interim_upload_id=fake_upload("interim").id)  # 반기 PDF만 (사업보고서는 원문, 반기는 PDF로 섞지 않는다)
+    assert r.status_code == 400 and "사업보고서 PDF도" in r.json()["detail"]
     r = post(annual_upload_id="nope")
     assert r.status_code == 400 and "다시 올려 주세요" in r.json()["detail"]
     r = post(annual_upload_id=fake_upload(corp_code="00126380").id)  # 다른 기업에 올린 PDF
@@ -403,3 +407,51 @@ def test_retry_keeps_uploaded_pdfs(client, monkeypatch):
     done = wait_done(client, client.post(f"/api/reports/jobs/{failed['job_id']}/retry").json()["job_id"])
     assert done["status"] == "done"
     assert [p["slot"] for p in client.get(f"/api/reports/{done['report_id']}").json()["pdfs"]] == ["annual"]
+
+
+# ───────── 2026-11-04: PDF 없이 만들면 DART 공시 원문에서 섹션을 자동으로 만든다
+DART_XML = """<DOCUMENT><SECTION-1><TITLE>II. 사업의 내용</TITLE>
+<SECTION-2><TITLE>1. 사업의 개요</TITLE><P>당사는 메모리 반도체를 만드는 회사입니다.</P></SECTION-2>
+<SECTION-2><TITLE>7. 기타 참고사항</TITLE><TABLE><TR><TD>DRAM</TD><TD>34.3%</TD></TR></TABLE></SECTION-2></SECTION-1>
+<SECTION-1><TITLE>IV. 이사의 경영진단 및 분석의견</TITLE><SECTION-2><TITLE>2. 개요</TITLE><P>매출이 늘었습니다.</P></SECTION-2></SECTION-1>
+</DOCUMENT>"""
+
+
+def test_split_xml_makes_same_sections_as_pdf_without_pages():
+    from app.dart_sections import split_xml, to_record
+    secs = {s["key"]: s for s in split_xml(DART_XML)}
+    assert secs["business_overview"]["found"] and "메모리 반도체" in secs["business_overview"]["pages"][0]["text"]
+    assert secs["business_overview"]["pages"][0]["page"] is None and secs["business_overview"]["page_start"] is None
+    assert "DRAM | 34.3%" in secs["other_info"]["pages"][0]["text"] and "2. 개요" in secs["mda"]["pages"][0]["text"]
+    assert not secs["products"]["found"] and secs["products"]["pages"] == []
+    rec = to_record({"kind": "half", "year": 2026, "title": "[기재정정]반기보고서 (2026.06)", "rcept_no": "20260814003509",
+                     "date": "2026-08-14"}, "interim", DART_XML)
+    assert rec["split_method"] == "dart_xml" and rec["corrected"] and str(rec["period_end"]) == "2026-06-30"
+    assert "20260814003509" in rec["checks"][0]["message"]
+
+
+def test_report_without_pdf_reads_dart_original(client, monkeypatch):
+    from app.dart_sections import to_record
+
+    async def records(_client, corp_code):
+        item = {"kind": "annual", "year": THIS_YEAR, "title": f"사업보고서 ({THIS_YEAR}.12)", "rcept_no": "20260317000635", "date": "2026-03-17"}
+        return THIS_YEAR, [to_record(item, "annual", DART_XML)]
+
+    monkeypatch.setattr(jobs, "fetch_dart_records", records)
+    r = client.post("/api/reports", json={"corp_code": "00164779"})  # PDF 없이
+    assert r.status_code == 202, r.text
+    job = wait_done(client, r.json()["job_id"])
+    assert job["status"] == "done", job
+    pdfs = client.get(f"/api/reports/{job['report_id']}").json()["pdfs"]
+    assert [(p["slot"], p["split_method"]) for p in pdfs] == [("annual", "dart_xml")]
+
+
+def test_dart_original_failure_fails_first_step(client, monkeypatch):
+    from app.dart import DartError
+
+    async def boom(_client, corp_code):
+        raise DartError("network", "연결 실패")
+
+    monkeypatch.setattr(jobs, "fetch_dart_records", boom)
+    job = wait_done(client, client.post("/api/reports", json={"corp_code": "00164779"}).json()["job_id"])
+    assert job["status"] == "failed" and job["error"]["step"] == "pdf" and "보고서 원문" in job["error"]["message"]

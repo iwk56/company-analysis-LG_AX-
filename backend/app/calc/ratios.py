@@ -4,6 +4,9 @@ from .models import (
     FIRST_YEAR,
     NEGATIVE_DENOMINATOR,
     NO_DATA,
+    STILL_LOSS,
+    TURNED_LOSS,
+    TURNED_PROFIT,
     ZERO_DENOMINATOR,
     Metric,
     YearFinancials,
@@ -39,6 +42,21 @@ def growth(cur: float | None, prev: float | None, has_prior_year: bool, abs_deno
     return divide(cur - prev, abs(prev) if abs_denominator else prev)
 
 
+def profit_growth(cur: float | None, prev: float | None, has_prior_year: bool) -> Metric:
+    """이익 증가율. 부호가 바뀌거나 적자가 이어지면 %가 오해를 낳아 흑자전환·적자전환·적자지속으로 쓴다 (2026-11-04)."""
+    if not has_prior_year:
+        return Metric(None, FIRST_YEAR)
+    if cur is None or prev is None:
+        return Metric(None, NO_DATA)
+    if prev < 0 and cur < 0:
+        return Metric(None, STILL_LOSS)
+    if prev < 0 <= cur:
+        return Metric(None, TURNED_PROFIT)
+    if prev > 0 > cur:
+        return Metric(None, TURNED_LOSS)
+    return growth(cur, prev, True)
+
+
 def compute_ratios(cur: YearFinancials, prev: YearFinancials | None) -> dict[str, Metric]:
     p = prev  # 전기 연도 자료(없으면 None)
 
@@ -64,10 +82,8 @@ def compute_ratios(cur: YearFinancials, prev: YearFinancials | None) -> dict[str
         "asset_turnover": divide(cur.revenue, avg_assets, year_end_only=assets_end_only),
         "receivable_turnover": divide(cur.revenue, avg_receivables, year_end_only=rec_end_only),
         "inventory_turnover": divide(cur.cost_of_sales, avg_inventory, year_end_only=inv_end_only),
-        # 성장성 (영업이익증가율은 전기 영업이익의 절댓값으로 나눠, 적자→흑자도 증가로 나온다)
+        # 성장성 (영업이익증가율: 부호가 바뀌면 흑자전환·적자전환, 적자가 이어지면 적자지속으로 표시)
         "revenue_growth": growth(cur.revenue, p.revenue if p else None, p is not None),
-        "operating_income_growth": growth(
-            cur.operating_income, p.operating_income if p else None, p is not None, abs_denominator=True
-        ),
+        "operating_income_growth": profit_growth(cur.operating_income, p.operating_income if p else None, p is not None),
         "asset_growth": growth(cur.total_assets, p.total_assets if p else None, p is not None),
     }

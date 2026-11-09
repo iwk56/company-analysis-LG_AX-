@@ -1,0 +1,17 @@
+{
+  "summary": "비교한 경쟁사들보다 매출 규모와 수익성이 앞서고 부채 부담은 낮은 편입니다.",
+  "strengths": [
+    {"text": "영업이익률이 비교한 경쟁사들보다 높아, 같은 매출로 더 많은 이익을 남깁니다.", "basis": ["operating_margin"]},
+    {"text": "ROE가 높아 주주가 맡긴 자본으로 이익을 많이 냈습니다.", "basis": ["roe"]}
+  ],
+  "advantages": [
+    {"text": "매출액과 시가총액이 커서 설비 투자와 연구개발에 쓸 여력이 큽니다.", "basis": ["revenue", "market_cap"]},
+    {"text": "부채비율이 낮아 업황이 나빠져도 버틸 재무 여력이 있습니다.", "basis": ["debt_ratio"]}
+  ],
+  "weaknesses": [
+    {"text": "매출액증가율이 높았던 만큼 업황이 꺾이면 실적이 크게 흔들릴 수 있어 경쟁사보다 변동성이 클 수 있습니다.", "basis": ["revenue_growth"]}
+  ],
+  "opportunities": [
+    {"text": "PER·PBR이 평균과 다른 수준이어서 시장이 이 회사의 성장을 어떻게 보는지 경쟁사와 함께 살펴볼 만합니다.", "basis": ["per", "pbr"]}
+  ]
+}

@@ -1,0 +1,33 @@
+{
+ "items": [
+  {
+   "step": "revenue",
+   "claim": "AI 서버용 고대역폭 메모리(HBM) 수요가 늘고 일반 D램 가격도 오르면서 메모리 업체들의 매출이 크게 늘었다는 보도입니다.",
+   "title": "(개발용 예시) 메모리 가격 상승과 HBM 수요",
+   "publisher": "예시통신",
+   "date": "2026-01-22",
+   "url": "https://example.com/news/memory-price"
+  },
+  {
+   "step": "non_operating",
+   "claim": "회사가 보유한 투자 지분의 가치가 올라 평가이익이 크게 났다는 보도입니다.",
+   "title": "(개발용 예시) 투자 지분 평가이익",
+   "publisher": "예시경제",
+   "date": "2026-01-23",
+   "url": "https://example.com/news/valuation-gain"
+  },
+  {
+   "step": "price",
+   "claim": "D램 현물가격이 최근 몇 달 사이 계속 오르고 있어 내년 상반기까지 가격 상승세가 이어질 것으로 보인다는 보도입니다.",
+   "title": "(개발용 예시) D램 가격 상승세 전망",
+   "publisher": "예시경제",
+   "date": "2026-01-20",
+   "url": "https://example.com/news/dram-price-trend"
+  }
+ ],
+ "_cited": [
+  "https://example.com/news/memory-price",
+  "https://example.com/news/valuation-gain",
+  "https://example.com/news/dram-price-trend"
+ ]
+}

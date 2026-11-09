@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { CSSProperties } from 'react'
 import styles from '../app.module.css'
 import { refreshArticles } from '../api'
 import type { ApiError, ArticleList, ComparisonCell, ComparisonColumn, FinancialYear, MacroSeries, MetricMap, ReportDetail, StockSeries } from '../api'
@@ -7,21 +8,20 @@ import { ARROW, difference, direction, relativeChange } from '../format/delta'
 import type { Direction } from '../format/delta'
 import type { Formatted, MetricKind } from '../format/number'
 import {
-  formatBaseRate, formatChange, formatExchangeRate, formatMetric, formatMultiple, formatPeople, formatPercent, formatPercentPoint, formatWonCard,
-  formatPrice, formatWonMan, formatWonTable, formatYears, noData,
+  formatBaseRate, formatChange, formatExchangeRate, formatMetric, formatMultiple, formatPercent, formatPercentPoint, formatWonCard,
+  formatPrice, formatWonTable, formatWonTableDelta, noData,
 } from '../format/number'
 import { dateText } from '../format/date'
 import { naverParts } from '../format/naverText'
 import { Num, SignalBadge } from '../ui'
-import { AiBadge, InfoNote, NoteButton, NotePanel, Summary } from './ai'
+import { AiBadge, AnalysisPoints, InfoNote, NoteButton, NotePanel, Summary } from './ai'
 import { evidenceFor, useContent, useNotice, useTopicMarks } from './aiData'
 import { CashflowChart, ComparisonScatter, LineGroupChart, SegmentChart, SeriesChart, StockIndexChart, TrendChart } from './charts'
-import { COLORS } from './palette'
+import { AXIS_COLORS, COLORS } from './palette'
 import YearTable from './YearTable'
 import { SectionCard } from './comments'
 import { Sensitivity } from './external'
 import { JumpLink } from './fold'
-import { essayNumbers } from '../format/essayNumbers'
 
 const EOK = 1e8
 const yearsOf = (r: ReportDetail) => r.financial_years.map((y) => y.year).sort((a, b) => a - b)
@@ -44,14 +44,16 @@ export function Header({ r }: { r: ReportDetail }) {
         <span>재무제표 <b>{r.basis}</b></span>
       </div>
       {r.year_count < 5 && <p className={styles.notice}>{r.year_count}년 자료만 있음 (상장 5년 미만이거나 수집된 연도가 적습니다)</p>}
-      {[...r.warnings, ...r.notes].map((m) => <p key={m} className={styles.notice}>{m}</p>)}
+      {/* 자료 참고 사항(이자비용 대체 등)은 2026-11-04부터 헤더에 띄우지 않고 출처 탭에 모은다 */}
     </section>
   )
 }
 
 // ───────────────────────── 1장: 핵심 지표 카드
-function Card({ label, value, signal, reason, dir, deltaText, noteKey, open, onNote }: {
+function Card({ label, hint, axis, value, signal, reason, dir, deltaText, noteKey, open, onNote }: {
   label: string
+  hint?: string
+  axis?: keyof typeof AXIS_COLORS
   value: Formatted
   signal: { level: string; reason: string } | null | undefined
   reason?: string
@@ -63,7 +65,11 @@ function Card({ label, value, signal, reason, dir, deltaText, noteKey, open, onN
 }) {
   return (
     <div className={styles.metriccard}>
-      <div className={styles.label}>{label} <NoteButton noteKey={noteKey} open={open} onToggle={onNote} /></div>
+      <div className={styles.label}>
+        {axis && <span className={styles.axisdot} style={{ background: AXIS_COLORS[axis] } as CSSProperties} />}
+        {label} <NoteButton noteKey={noteKey} open={open} onToggle={onNote} />
+      </div>
+      {hint && <div className={styles.hint} style={axis ? ({ color: AXIS_COLORS[axis] } as CSSProperties) : undefined}>{hint}</div>}
       <div className={styles.big}><Num f={value} /></div>
       <div className={styles.delta}>
         {dir && deltaText ? <>전년 대비 {ARROW[dir]} <Num f={deltaText} /></> : '전년 대비 비교 자료 없음'}
@@ -81,10 +87,12 @@ export function CoreCards({ r }: { r: ReportDetail }) {
   const ratio = (year: string, key: string) => r.results.ratios[year]?.[key]
   const sig = (key: string) => r.results.signals[y]?.[key]
   const note = (key: string) => ({ noteKey: key, open: openKey === key, onNote: () => setOpenKey(openKey === key ? null : key) })
-  const ppCard = (key: string, label: string, signalKey: string, main: (m: MetricMap[string]) => Formatted) => {
+  const ppCard = (
+    key: string, label: string, hint: string, axis: keyof typeof AXIS_COLORS, signalKey: string, main: (m: MetricMap[string]) => Formatted,
+  ) => {
     const d = difference(ratio(y, key)?.value, ratio(p, key)?.value)
     return (
-      <Card label={label} value={main(ratio(y, key))} signal={sig(signalKey)} dir={direction(d)}
+      <Card label={label} hint={hint} axis={axis} value={main(ratio(y, key))} signal={sig(signalKey)} dir={direction(d)}
         deltaText={d === null ? null : formatPercentPoint(d)} {...note(key)} />
     )
   }
@@ -94,10 +102,10 @@ export function CoreCards({ r }: { r: ReportDetail }) {
       <h3>핵심 지표 <span className={styles.unit}>{r.base_year} 사업연도</span></h3>
       <Summary sectionKey="core_cards" />
       <div className={styles.cards}>
-        {ppCard('revenue_growth', '매출 성장률', 'revenue_growth', (m) => formatMetric(m, 'change'))}
-        {ppCard('operating_margin', '영업이익률', 'operating_margin', (m) => formatMetric(m, 'percent'))}
-        {ppCard('debt_ratio', '부채비율', 'debt_ratio', (m) => formatMetric(m, 'percent'))}
-        <Card label="영업현금흐름" value={formatWonCard(amount(fyOf(r, r.base_year), 'cfo'))} signal={sig('operating_cashflow')}
+        {ppCard('revenue_growth', '매출 성장률', '회사가 커지는 중인지', 'growth', 'revenue_growth', (m) => formatMetric(m, 'change'))}
+        {ppCard('operating_margin', '영업이익률', '본업으로 돈이 남는지', 'profit', 'operating_margin', (m) => formatMetric(m, 'percent'))}
+        {ppCard('debt_ratio', '부채비율', '빚 부담이 괜찮은지', 'stability', 'debt_ratio', (m) => formatMetric(m, 'percent'))}
+        <Card label="영업현금흐름" hint="회계상 이익이 진짜 현금인지" axis="cash" value={formatWonCard(amount(fyOf(r, r.base_year), 'cfo'))} signal={sig('operating_cashflow')}
           dir={direction(cfoDelta)} deltaText={cfoDelta === null ? null : formatChange(cfoDelta)} {...note('operating_cashflow')} />
       </div>
       {openKey && <NotePanel noteKey={openKey} />}
@@ -149,23 +157,63 @@ export function RecentBox({ r }: { r: ReportDetail }) {
 }
 
 // ───────────────────────── 부록 C: 실적 추이 + 재무 수치 표
-export function Trend({ r }: { r: ReportDetail }) {
-  const years = yearsOf(r)
-  const data = years.map((year) => ({
+/** 실적 추이 차트 자료 (매출액 억 원 + 영업이익률 %). 한눈에 탭도 쓴다 */
+export function trendData(r: ReportDetail) {
+  return yearsOf(r).map((year) => ({
     year,
     revenue: (amount(fyOf(r, year), 'revenue') ?? NaN) / EOK,
     margin: (r.results.ratios[String(year)]?.operating_margin?.value ?? NaN) * 100,
   })).map((d) => ({ ...d, revenue: Number.isNaN(d.revenue) ? null : d.revenue, margin: Number.isNaN(d.margin) ? null : d.margin }))
-  const row = (label: string, field: string) => ({ label, cells: years.map((y) => formatWonTable(amount(fyOf(r, y), field))) })
+}
+
+export function Trend({ r }: { r: ReportDetail }) {
+  const data = trendData(r)
   return (
     <SectionCard sectionKey="trend">
       <h3>실적 추이</h3>
       <Summary sectionKey="trend" />
       <TrendChart data={data} />
-      <YearTable title="재무 수치" unit="억 원" years={years}
-        rows={[row('매출액', 'revenue'), row('영업이익', 'operating_income'), row('당기순이익', 'net_income'),
-          row('지배주주 순이익', 'net_income_parent'), row('자산총계', 'total_assets'), row('부채총계', 'total_liabilities'),
-          row('자본총계', 'total_equity')]} />
+      {/* 2026-11-04: 매출·이익 금액 표는 손익계산서 분석으로, 자산·부채·자본은 재무상태 탭(재무상태표 요약)으로 옮겼다 */}
+    </SectionCard>
+  )
+}
+
+// ───────────────────────── 재무상태 탭: 재무상태표 요약 (금액, 비율 앞에 둔다)
+export function BalanceSummary({ r }: { r: ReportDetail }) {
+  const years = yearsOf(r)
+  const row = (label: string, field: string) => ({ label, cells: years.map((y) => formatWonTable(amount(fyOf(r, y), field))) })
+  const source = r.sources.find((s) => s.kind === 'annual_report' && s.year === r.base_year)
+  const totalChanges = [
+    { key: 'total_assets', label: '자산총계' },
+    { key: 'total_liabilities', label: '부채총계' },
+    { key: 'total_equity', label: '자본총계' },
+  ].map(({ key, label }) => {
+    const prior = amount(fyOf(r, r.base_year - 1), key)
+    const current = amount(fyOf(r, r.base_year), key)
+    return { key, label, change: prior === null || current === null ? null : current - prior }
+  })
+  return (
+    <SectionCard sectionKey="balance">
+      <h3>재무상태표 요약 <span className={styles.unit}>({r.basis}재무제표 · 각 연도 말)</span></h3>
+      <YearTable title="무엇을 가지고 있고(자산) 어떻게 마련했나(부채·자본)" unit="억 원" years={years}
+        rows={[row('자산총계', 'total_assets'), row('└ 유동자산', 'current_assets'), row('  └ 매출채권', 'receivables'), row('  └ 재고자산', 'inventory'),
+          row('부채총계', 'total_liabilities'), row('└ 유동부채', 'current_liabilities'),
+          row('자본총계', 'total_equity'), row('└ 지배주주 자본', 'equity_parent')]}
+        footnote="DART 재무제표 값. 유동자산·유동부채는 1년 안에 현금이 되거나 갚아야 하는 것입니다." />
+      <p className={styles.tabletitle}>{r.base_year - 1}년 말 → {r.base_year}년 말, 무엇이 달라졌나 <span className={styles.unit}>단위: 억 원</span></p>
+      <p className={styles.balanceGuide}>자산·부채·자본 총계의 전년 대비 증감입니다. 수치만으로 변동 원인을 단정하지 않습니다.</p>
+      <div className={styles.balanceTotalChanges} aria-label="자산·부채·자본 총계 증감">
+        {totalChanges.map((item) => (
+          <div key={item.key} className={styles.balanceTotalChange}>
+            <span>{item.label}</span>
+            <b><Num f={formatWonTableDelta(item.change)} /></b>
+          </div>
+        ))}
+      </div>
+      <p className={styles.footnote}>
+        재무상태표는 연말 잔액입니다.
+        {source && <> 출처: <a href={source.url} target="_blank" rel="noreferrer">{source.label}</a></>}
+      </p>
     </SectionCard>
   )
 }
@@ -192,14 +240,20 @@ const GROUPS: { name: string; unit: '%' | 'x'; metrics: MetricDef[]; chartNote?:
     { key: 'asset_growth', label: '총자산증가율', kind: 'change', chart: true }] },
 ]
 
-export function Ratios({ r }: { r: ReportDetail }) {
+/** 재무비율. 수익성·성장성은 표·차트만, 안정성·활동성은 근거 해설과 함께 보여 준다 */
+export function Ratios({ r, groups, title = '재무비율', sectionKey = 'ratios' }: {
+  r: ReportDetail; groups?: string[]; title?: string; sectionKey?: 'ratios' | 'profit_ratios'
+}) {
   const years = yearsOf(r)
   const byFinancialCost = r.interest_basis === '금융비용'
+  // 2026-11-05: 실적 탭 비율 해설은 표시하지 않고, 재무상태 탭 해설만 표시한다
+  const ex = useContent(sectionKey === 'profit_ratios' ? 'explain_profit_ratios' : 'explain_stability_ratios')
+  const exTask = sectionKey === 'profit_ratios' ? 'explain_profit_ratios' : 'explain_stability_ratios'
   return (
-    <SectionCard sectionKey="ratios">
-      <h3>재무비율</h3>
-      <Summary sectionKey="ratios" />
-      {GROUPS.map((g) => {
+    <SectionCard sectionKey={sectionKey}>
+      <h3>{title}</h3>
+      {sectionKey === 'ratios' && <Summary sectionKey="ratios" />}
+      {GROUPS.filter((g) => !groups || groups.includes(g.name)).map((g) => {
         const label = (m: MetricDef) => (m.key === 'interest_coverage' && byFinancialCost ? '이자보상배율(금융비용 기준)' : m.label)
         const metric = (m: MetricDef, y: number) => r.results.ratios[String(y)]?.[m.key]
         const rows = g.metrics.map((m) => ({ label: label(m), cells: years.map((y) => formatMetric(metric(m, y), m.kind)), noteKey: m.key }))
@@ -218,6 +272,22 @@ export function Ratios({ r }: { r: ReportDetail }) {
             </>} />
             {g.name === '안정성' && <ActualInterest r={r} />}
             <LineGroupChart data={data} series={charted.map((m) => ({ key: m.key, name: label(m) }))} unit={g.unit} />
+            {!['수익성', '성장성'].includes(g.name) && (() => {
+              const st = ex?.groups[g.name as '수익성' | '성장성' | '안정성' | '활동성']
+              if (!st) return null
+              return (
+                <div className={styles.ratioExplain}>
+                  <AnalysisPoints text={st.text} />
+                  <p className={styles.analysisMeta}><AiBadge task={exTask} />
+                    {st.basis.length > 0 && <> 근거: {st.basis.map((b) => ex?.sources[b] ?? b).join(', ')}</>}
+                    {st.basis.some((key) => key === 'balance' || key === 'balance_notes') && r.sources.some((source) => source.kind === 'annual_report') && (
+                      <> · 공시 원문: {r.sources.filter((source) => source.kind === 'annual_report').map((source) => (
+                        <a key={`${source.year}-${source.rcept_no}`} href={source.url} target="_blank" rel="noreferrer">{source.year}년 ↗ </a>
+                      ))}</>
+                    )}</p>
+                </div>
+              )
+            })()}
           </div>
         )
       })}
@@ -229,12 +299,28 @@ export function Ratios({ r }: { r: ReportDetail }) {
 export function Dupont({ r }: { r: ReportDetail }) {
   const years = yearsOf(r)
   const d = (y: number) => r.results.dupont[String(y)]
+  // 2026-11-04: 비율의 변화율(%)은 "−656.6%"처럼 읽기 어려워, 그 요소의 전년 → 올해 값으로 보여 준다
+  const FACTOR: Record<string, { key: 'net_margin' | 'asset_turnover' | 'leverage'; kind: 'percent' | 'multiple'; meaning: string }> = {
+    순이익률: { key: 'net_margin', kind: 'percent', meaning: '매출에서 순이익으로 남은 비중입니다.' },
+    총자산회전율: { key: 'asset_turnover', kind: 'multiple', meaning: '자산을 매출로 연결하는 효율을 보여줍니다.' },
+    재무레버리지: { key: 'leverage', kind: 'multiple', meaning: '자기자본 대비 자산 규모입니다. 상승만으로 차입 증가를 단정할 수 없습니다.' },
+  }
   const reason = (y: number): string => {
     const driver = d(y)?.driver
     if (!driver) return d(y)?.driver_na ?? '자료 없음'
-    return `${driver.factor} (${formatChange(driver.changes[driver.factor]).text})`
+    const f = FACTOR[driver.factor]
+    if (!f) return `${driver.factor} (${formatChange(driver.changes[driver.factor]).text})`
+    const before = formatMetric(d(y - 1)?.metrics[f.key], f.kind).text
+    const after = formatMetric(d(y)?.metrics[f.key], f.kind).text
+    return `${driver.factor} (${before} → ${after})`
   }
   const latest = d(r.base_year)
+  const prior = d(r.base_year - 1)
+  const roeNow = latest?.metrics.roe
+  const roeBefore = prior?.metrics.roe
+  const roeDirection = typeof roeNow?.value === 'number' && typeof roeBefore?.value === 'number'
+    ? roeNow.value > roeBefore.value ? '상승' : roeNow.value < roeBefore.value ? '하락' : '변화 없음'
+    : '비교 자료 없음'
   return (
     <SectionCard sectionKey="dupont">
       <h3>듀퐁 분석 <span className={styles.unit}>ROE = 순이익률 × 총자산회전율 × 재무레버리지</span></h3>
@@ -245,19 +331,46 @@ export function Dupont({ r }: { r: ReportDetail }) {
         { label: '재무레버리지', cells: years.map((y) => formatMetric(d(y)?.metrics.leverage, 'multiple')) },
         { label: 'ROE', cells: years.map((y) => formatMetric(d(y)?.metrics.roe, 'percent')) },
         { label: '주된 변화 요인', cells: years.map((y) => reason(y)) },
-      ]} footnote={d(years[0])?.metrics.roe?.year_end_only ? '† 평균 대신 기말 값 기준. 주된 변화 요인의 괄호 안은 그 요소의 전년 대비 변화율' : '주된 변화 요인의 괄호 안은 그 요소의 전년 대비 변화율'} />
-      <div><b>ROE가 변한 주된 이유 ({r.base_year}):</b> {latest ? reason(r.base_year) : '자료 없음'} <InfoNote noteKey="roe" /></div>
+      ]} footnote={d(years[0])?.metrics.roe?.year_end_only ? '† 평균 대신 기말 값 기준. 주된 변화 요인은 ROE 변화에 가장 크게 영향을 준 요소이며, 괄호 안은 그 요소의 전년 → 올해 값' : '주된 변화 요인은 ROE 변화에 가장 크게 영향을 준 요소이며, 괄호 안은 그 요소의 전년 → 올해 값'} />
+      <div className={styles.dupontComment}>
+        <b>ROE 변화 코멘트 ({r.base_year - 1} → {r.base_year})</b> <InfoNote noteKey="roe" />
+        <p>ROE는 {formatMetric(roeBefore, 'percent').text}에서 {formatMetric(roeNow, 'percent').text}로 {roeDirection}했습니다.
+          {' '}가장 크게 달라진 요인은 {latest ? reason(r.base_year) : '자료 없음'}입니다.</p>
+        <div className={styles.dupontFactors}>
+          {Object.entries(FACTOR).map(([name, factor]) => {
+            const before = prior?.metrics[factor.key]?.value
+            const after = latest?.metrics[factor.key]?.value
+            const movement = typeof before === 'number' && typeof after === 'number'
+              ? after > before ? '상승' : after < before ? '하락' : '변화 없음'
+              : '비교 자료 없음'
+            const influence = movement === '상승' ? 'ROE를 높이는 방향' : movement === '하락' ? 'ROE를 낮추는 방향' : '방향을 판정할 자료 없음'
+            return (
+              <div key={name} className={styles.dupontFactor}>
+                <b>{name}</b>
+                <span>{formatMetric(prior?.metrics[factor.key], factor.kind).text} → {formatMetric(latest?.metrics[factor.key], factor.kind).text}</span>
+                <small>{factor.meaning} {movement} · {influence}</small>
+              </div>
+            )
+          })}
+        </div>
+        <p className={styles.footnote}>세 요소는 곱으로 ROE를 구성하므로 증감률을 단순 합산할 수 없습니다. 재무레버리지 변화는 부채비율과 함께 확인하세요.</p>
+      </div>
     </SectionCard>
   )
 }
 
 // ───────────────────────── 부록 C: 현금흐름
-export function Cashflow({ r }: { r: ReportDetail }) {
-  const years = yearsOf(r)
-  const data = years.map((y) => ({
+/** 현금흐름 차트 자료 (억 원). 한눈에 탭도 쓴다 */
+export function cashflowData(r: ReportDetail) {
+  return yearsOf(r).map((y) => ({
     year: y,
     cfo: (amount(fyOf(r, y), 'cfo') ?? NaN) / EOK, cfi: (amount(fyOf(r, y), 'cfi') ?? NaN) / EOK, cff: (amount(fyOf(r, y), 'cff') ?? NaN) / EOK,
   })).map((d) => ({ year: d.year, cfo: Number.isNaN(d.cfo) ? null : d.cfo, cfi: Number.isNaN(d.cfi) ? null : d.cfi, cff: Number.isNaN(d.cff) ? null : d.cff }))
+}
+
+export function Cashflow({ r }: { r: ReportDetail }) {
+  const years = yearsOf(r)
+  const data = cashflowData(r)
   const row = (label: string, field: string) => ({ label, cells: years.map((y) => formatWonTable(amount(fyOf(r, y), field))) })
   return (
     <SectionCard sectionKey="cashflow">
@@ -301,7 +414,8 @@ export function Competitors({ r }: { r: ReportDetail }) {
     return (
       <SectionCard sectionKey="competitors">
         <h3>경쟁사 비교</h3>
-        <p className={styles.muted}>이 리포트는 경쟁사 없이 만들어졌습니다.</p>
+        <p className={styles.sub}>제품·고객·사업 방식이 비슷한 국내 상장사와 같은 사업연도 재무 지표를 나란히 봅니다.</p>
+        <p className={styles.muted}>이 리포트는 경쟁사 자동 선정 기능 이전에 만들어져 비교 기업이 없습니다. 같은 회사로 리포트를 새로 만들면 비슷한 국내 상장사(최대 6곳)를 골라 비교합니다.</p>
       </SectionCard>
     )
   }
@@ -309,8 +423,21 @@ export function Competitors({ r }: { r: ReportDetail }) {
   return (
     <SectionCard sectionKey="competitors">
       <h3>경쟁사 비교 <span className={styles.unit}>({comp.base_year} 사업연도 기준)</span></h3>
+      <p className={styles.sub}>제품·고객·사업 방식이 비슷한 국내 상장사와 같은 사업연도 재무 지표를 나란히 봅니다.</p>
       <Summary sectionKey="competitors" />
-      <p className={styles.sub}>업계 내 위치 한 줄과 시가총액 순위는 <JumpLink to="position">1장 업계 위치</JumpLink>에 있습니다.</p>
+      {r.competitors.some((c) => c.pick_reason) && (
+        <ul className={styles.peerlist}>
+          {r.competitors.map((c) => (
+            <li key={c.corp_code}>
+              <b>{c.corp_name}</b> <span className={styles.sub}>{c.pick_reason ?? ''} · {c.picked_by === 'ai' ? 'AI가 고름' : '같은 업종 · 시가총액 순'}</span>
+              {!c.included && c.excluded_reason && <span className={styles.error}> · 비교에서 제외: {c.excluded_reason}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {r.competitors.some((c) => c.pick_reason) && (
+        <p className={styles.footnote}>비교 기업은 실무 기준대로 ① 같은 제품 ② 같은 고객 ③ 비슷한 사업 구조 순으로 골랐습니다. 후보는 한국거래소에 등록된 주요제품이 겹치는 상장사(업종 분류가 달라도 포함)와 같은 업종 상장사이고, AI가 주요제품을 보고 고릅니다(회사 이름·시가총액은 판단 근거로 쓰지 않음). 숫자는 모두 DART·주식시세에서 코드가 계산합니다.</p>
+      )}
       <div className={styles.tablescroll}>
       <table className={styles.table}>
         <thead>
@@ -337,10 +464,6 @@ export function Competitors({ r }: { r: ReportDetail }) {
         </tbody>
       </table>
       </div>
-      <p className={styles.footnote}>
-        ▲▼는 해당 칸이 평균보다 높은지 낮은지입니다(좋고 나쁨이 아님). 순위는 1위가 가장 좋은 쪽이며 부채비율은 낮을수록 1위입니다(시가총액은 큰 쪽이 1위인 규모 순위).
-        {' '}{comp.rank_rule}
-      </p>
       <MarketNotes r={r} />
       {comp.excluded.map((x) => <p key={x.corp_code} className={styles.notice}>{x.corp_name}: {x.reason}</p>)}
       {comp.scatter.length > 0 && (
@@ -365,7 +488,7 @@ function MarketNotes({ r }: { r: ReportDetail }) {
     <div className={styles.footnote}>
       <p>
         시가총액은 <b>보통주 기준</b>입니다(공공데이터포털 금융위원회_주식시세정보, 기준일 {dates.length ? dates.join(', ') : '자료 없음'}).
-        {' '}우선주가 있는 기업은 포털 시가총액보다 작게 나올 수 있습니다. PER·PBR 계산 방법은 <JumpLink to="stocks">부록 D 가치평가</JumpLink>에 있습니다.
+        {' '}우선주가 있는 기업은 포털 시가총액보다 작게 나올 수 있습니다. PER·PBR 계산 방법은 <JumpLink to="stocks">주가 흐름 비교</JumpLink>에 있습니다.
       </p>
     </div>
   )
@@ -389,7 +512,7 @@ function Valuation({ r }: { r: ReportDetail }) {
         {' '}<span className={styles.sub}>(기준일 {row.market_as_of ?? '자료 없음'}, 보통주 기준)</span>
       </p>
       <p className={styles.footnote}>
-        PER = 시가총액 ÷ {comp.base_year} 지배주주 순이익, PBR = 시가총액 ÷ {comp.base_year}말 지배주주 자본(계산은 코드). 경쟁사 값은 <JumpLink to="competitors">부록 E 경쟁사 비교</JumpLink>.
+        PER = 시가총액 ÷ {comp.base_year} 지배주주 순이익, PBR = 시가총액 ÷ {comp.base_year}말 지배주주 자본(계산은 코드). 경쟁사 값은 <JumpLink to="competitors">부록 경쟁사 비교</JumpLink>.
         {' '}포털·증권사 앱은 보통 최근 4개 분기 이익을 써서 값이 다를 수 있습니다.
       </p>
     </>
@@ -413,7 +536,7 @@ export function Position({ r }: { r: ReportDetail }) {
             ) : <>시가총액 순위: <span className={styles.muted}>시세 없음</span></>}
           </p>
           <p><b>{comp.position.text}</b></p>
-          <p className={styles.sub}>비교표·점 그래프: <JumpLink to="competitors">부록 E 경쟁사 비교</JumpLink></p>
+          <p className={styles.sub}>비교표·점 그래프: <JumpLink to="competitors">부록 경쟁사 비교</JumpLink></p>
         </>
       )}
     </section>
@@ -421,7 +544,7 @@ export function Position({ r }: { r: ReportDetail }) {
 }
 
 // ───────────────────────── 부록 D: 주가 흐름 비교 (기준일 = 100)
-function stockRows(list: StockSeries[]) {
+export function stockRows(list: StockSeries[]) {
   const byDate = new Map<string, Record<string, number | string | null>>()
   for (const s of list) {
     for (const p of s.points) {
@@ -464,7 +587,7 @@ export function Stocks({ r }: { r: ReportDetail }) {
             })}
           </ul>
           <p className={styles.footnote}>
-            {marks.length > 0 && <>보라색 세로 점선 ①②③은 <JumpLink to="topics">2장 공시 주제</JumpLink>의 공시 날짜입니다(휴일이면 다음 거래일). </>}
+            {marks.length > 0 && <>보라색 세로 점선은 DART 공시 접수일입니다(휴일이면 다음 거래일). </>}
             수정주가가 아니라 액면분할·배당 등이 반영되지 않았을 수 있습니다. 기준일은 리포트 생성일 1년 전 이후 첫 거래일이며, 보통주 종가 기준입니다.
             {' '}출처: <a href="https://www.data.go.kr/data/15094808/openapi.do" target="_blank" rel="noreferrer">공공데이터포털 금융위원회_주식시세정보</a> (영업일 1~2일 늦게 반영)
           </p>
@@ -516,48 +639,23 @@ function NetVsOperating({ r }: { r: ReportDetail }) {
 }
 
 // ───────────────────────── 1장: 기업 개요 + 직원·연구개발비
-function Fact({ label, value, extra }: { label: string; value: Formatted; extra?: React.ReactNode }) {
-  return (
-    <div className={styles.fact}>
-      <div className={styles.label}>{label}</div>
-      <div className={styles.factvalue}><Num f={value} /></div>
-      {extra && <div className={styles.footnote}>{extra}</div>}
-    </div>
-  )
-}
 
 export function Overview({ r }: { r: ReportDetail }) {
   const ov = useContent('write_overview')
   const ovNotice = useNotice('write_overview')
-  const emp = useContent('employees')
-  const empNotice = useNotice('employees')
-  const rnd = useContent('extract_rnd')
-  const rndNotice = useNotice('extract_rnd')
-  const link = evidenceFor(r, 'rnd')[0]
-  const missing = (msg?: string) => noData(msg ? `자료 없음` : '자료 없음')
   return (
     <SectionCard sectionKey="overview">
-      <h3>기업 개요</h3>
+      <h3>어떤 일을 하는 회사인가</h3>
       <p className={styles.sub}>업종 {r.company.industry_name ?? '자료 없음'}</p>
-      {ov?.overview ? <p><AiBadge task="write_overview" /> {ov.overview}</p> : <p className={styles.muted}>{ovNotice?.message ?? 'AI 기업 개요가 아직 없습니다'}</p>}
-      <div className={styles.facts}>
-        <Fact label="직원 수" value={emp ? formatPeople(emp.count) : missing(empNotice?.message)}
-          extra={emp ? <>{emp.year}년 사업보고서 기준{emp.url && <> · <a href={emp.url} target="_blank" rel="noreferrer">원문</a></>}</> : empNotice?.message} />
-        <Fact label="평균 근속연수" value={emp ? formatYears(emp.avg_tenure_years) : missing()} />
-        <Fact label="평균 급여(1인)" value={emp ? formatWonMan(emp.avg_salary_won) : missing()} />
-        <Fact label="연구개발비" value={rnd ? formatWonCard(rnd.amount_won) : missing(rndNotice?.message)}
-          extra={rnd ? <><AiBadge task="extract_rnd" kind="extract" /> 매출 대비 {formatPercent(rnd.ratio_to_revenue).text}(계산은 코드){link && <> · <a href={link.url} target="_blank" rel="noreferrer">원문</a></>}</> : rndNotice?.message} />
-      </div>
-      <p className={styles.footnote}>직원 현황은 사업보고서 기준이며 연결이 아니라 보고서를 낸 회사(보통 별도) 기준입니다. 남·여 값을 직원 수로 가중해 합산한 값이라 원문 합계와 약간 다를 수 있습니다.</p>
+      {ov?.overview ? <div className={styles.overviewtext}>{ov.overview.split('\n').filter((x) => x.trim()).map((para, i) => <p key={i}>{i === 0 && <><AiBadge task="write_overview" />{' '}</>}{para}</p>)}</div> : <p className={styles.muted}>{ovNotice?.message ?? 'AI 기업 개요가 아직 없습니다'}</p>}
     </SectionCard>
   )
 }
 
-// ───────────────────────── 1장: 사업부문 비중 + BCG 해석
+// ───────────────────────── 사업부문 비중 (BCG 해석은 점유율 없이 비중만 봐서 얕아 2026-11-04 삭제, 점유율은 산업·경쟁 탭 막대)
 export function Segments({ r }: { r: ReportDetail }) {
   const seg = useContent('extract_segments')
   const notice = useNotice('extract_segments')
-  const bcg = useContent('write_overview')?.bcg
   const link = evidenceFor(r, 'segments')[0]
   if (!seg || seg.products.length === 0) {
     return (
@@ -584,14 +682,6 @@ export function Segments({ r }: { r: ReportDetail }) {
       </table>
       {seg.overseas_share !== null && (
         <p>해외 매출 비중 <b>{formatPercent(seg.overseas_share).text}</b> <span className={styles.sub}>(지역별 매출에서 국내를 뺀 값, 수출 통계와는 다를 수 있음)</span></p>
-      )}
-      {bcg && (
-        <div className={styles.explain}>
-          <b>BCG 관점 해석</b> <AiBadge task="write_overview" />
-          {bcg.summary && <p>{bcg.summary}</p>}
-          {bcg.segments.length > 0 && <ul>{bcg.segments.map((s) => <li key={s.name}><b>{s.name}</b>: {s.comment}</li>)}</ul>}
-          <p className={styles.footnote}>시장점유율 자료가 없어 BCG 매트릭스로 분류하지 않고, 매출 비중과 성장 속도만으로 해석했습니다.</p>
-        </div>
       )}
       <p className={styles.footnote}>
         금액은 사업보고서 주석에서 AI가 옮긴 값을 원문과 대조해 쓴 것이고, 비중·증감률은 코드가 계산했습니다.
@@ -659,6 +749,18 @@ export function Macro({ r }: { r: ReportDetail }) {
 // ───────────────────────── 2장 마지막: 네이버 검색결과 (참고 목록, AI에 넣지 않음)
 const NAVER_API_HUB_URL = 'https://www.ncloud.com/product/applicationService/NAVERAPIHUB'
 
+/** 요약문을 글자만으로 (마우스를 올렸을 때 보여 줄 용도) */
+const plainNaver = (raw: string) => naverParts(raw).map((p) => p.text).join('')
+
+/** 기사 링크의 주소로 언론사 사이트를 짧게 보여 준다 (예: www.hankyung.com → hankyung.com) */
+function pressOf(link: string): string {
+  try {
+    return new URL(link).hostname.replace(/^(www|news|m)\./, '')
+  } catch {
+    return ''
+  }
+}
+
 function NaverText({ raw }: { raw: string }) {
   return <>{naverParts(raw).map((p, i) => (p.bold ? <b key={i}>{p.text}</b> : <span key={i}>{p.text}</span>))}</>
 }
@@ -678,7 +780,7 @@ export function Articles({ r }: { r: ReportDetail }) {
   // 약관(검색결과 앞뒤에 다른 내용 삽입 금지)에 따라 내 코멘트란이 붙는 SectionCard를 쓰지 않는다
   return (
     <section className={styles.card}>
-      <h3>네이버 검색결과 <span className={styles.unit}>(참고 목록{a && !a.expired && ', 최신순 30건'})</span></h3>
+      <h3>요즘 이 회사 관련 뉴스 <span className={styles.unit}>(네이버 뉴스 검색결과{a && !a.expired && a.groups && a.groups.length > 1 ? ', 주제별 5건' : ''})</span></h3>
       {a === null ? (
         <p className={styles.muted}>이 리포트는 기사 수집 기능이 생기기 전에 만들어져 자료가 없습니다. 리포트를 다시 만들면 표시됩니다.</p>
       ) : a.expired ? (
@@ -689,23 +791,38 @@ export function Articles({ r }: { r: ReportDetail }) {
         </p>
       ) : (
         <>
-          <p className={styles.footnote}>
-            회사명 “{a.query}”의 네이버 뉴스 검색결과(최신순 30건)를 받은 순서·내용 그대로 보여주는 참고 목록입니다. 리포트의 AI 해석에는 쓰지 않습니다.
-            수집일 {dateText(a.collected_at)}, 약관에 따라 {dateText(a.expires_at)}에 지웁니다.
-          </p>
-          {a.items.length === 0 ? (
-            <p className={styles.muted}>검색결과 없음</p>
-          ) : (
-            <ul className={styles.articles}>
-              {a.items.map((it, i) => (
-                <li key={i}>
-                  <a href={it.link} target="_blank" rel="noreferrer"><NaverText raw={it.title} /></a>
-                  <span className={styles.sub}> {dateText(it.published_at)}</span>
-                  {it.summary && <p className={styles.summary}><NaverText raw={it.summary} /></p>}
-                </li>
-              ))}
-            </ul>
-          )}
+          {(() => {
+            const groups = a.groups ?? [{ label: null, query: a.query, items: a.items }]
+            const topical = groups.length > 1
+            return (
+              <>
+                <div className={topical ? styles.newsgrid : undefined}>
+                  {groups.map((g) => (
+                    <div key={g.query} className={topical ? styles.newscard : undefined}>
+                      {g.label && <div className={styles.newstopic}>{g.label}</div>}
+                      {g.items.length === 0 ? (
+                        <p className={styles.muted}>검색결과 없음</p>
+                      ) : (
+                        <ul className={styles.headlines}>
+                          {g.items.map((it, i) => (
+                            <li key={i}>
+                              {/* 헤드라인만 보이고, 받은 요약문은 마우스를 올리면 그대로 보인다 */}
+                              <a href={it.link} target="_blank" rel="noreferrer" title={plainNaver(it.summary)}><NaverText raw={it.title} /></a>
+                              <span className={styles.newsmeta}>{pressOf(it.link)} · {it.published_at.slice(5, 10).replace('-', '.')}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <p className={styles.footnote}>
+                  {topical ? '겹침을 줄이도록 구체화한 6가지 주제(사업·투자·전략·협력·인사·우려)별 네이버 검색결과(정확도순 5건)를' : `“${a.query}” 네이버 뉴스 검색결과를`} 받은 순서·내용 그대로 보여 줍니다. 네이버가 반환한 결과를 선별·재정렬하지 않아 같은 기사가 여러 주제에 나오거나 발행일이 가까울 수 있으며, 기간 전체에 고르게 분포한다고 보장할 수 없습니다.
+                  헤드라인에 마우스를 올리면 요약문이 보입니다. AI 해석에는 쓰지 않습니다. 수집 {dateText(a.collected_at)} · {dateText(a.expires_at)} 삭제(약관 보관 기간)
+                </p>
+              </>
+            )
+          })()}
         </>
       )}
       <p className={styles.naverbi}>
@@ -715,30 +832,5 @@ export function Articles({ r }: { r: ReportDetail }) {
         <span className={styles.footnote}>네이버™는 NAVER®의 등록상표입니다.</span>
       </p>
     </section>
-  )
-}
-
-// ───────────────────────── 4장: 자기소개서에 쓸 숫자 모음 (코드가 저장된 값에서 고름, AI 없음 → 한 줄 요약 없음)
-export function EssayNumbers({ r }: { r: ReportDetail }) {
-  const { lines, excluded } = essayNumbers(r)
-  return (
-    <SectionCard sectionKey="essay_numbers">
-      <h3>자기소개서에 쓸 숫자 모음 <span className={styles.unit}>(이미 계산·검증된 값, AI 없음)</span></h3>
-      {lines.length === 0 ? <p className={styles.muted}>쓸 수 있는 숫자가 없습니다</p> : (
-        <ul className={styles.essaylist}>
-          {lines.map((l) => (
-            <li key={l.key}>
-              {l.lead} <b><Num f={l.value} /></b>{l.tail}
-              <span className={styles.sub}>
-                {' '}· {l.basis ? `${l.basis} 기준 · ` : ''}
-                {l.source ? <a href={l.source.url} target="_blank" rel="noreferrer">{l.source.label}</a> : '출처 없음'}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {excluded.length > 0 && <p className={styles.footnote}>제외: {excluded.map((x) => `${x.label}(${x.reason})`).join(', ')}</p>}
-      <p className={styles.footnote}>값과 숫자 표시는 다른 섹션과 같습니다. 해석·평가 표현은 넣지 않았으니 문장은 직접 쓰세요.</p>
-    </SectionCard>
   )
 }

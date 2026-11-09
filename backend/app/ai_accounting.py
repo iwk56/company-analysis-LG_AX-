@@ -51,14 +51,22 @@ async def extract_going_concern(client: httpx.AsyncClient, xml: str, audit: dict
     try:
         r = await ask(client, "extract_going_concern", "extract", P.user_message(P.EXTRACT_GOING_CONCERN, sources))
     except LlmError as e:
-        return _failed(e)
+        return audit_fallback(audit) or _failed(e)
     d = r.data
     flag, quote = d.get("has_material_uncertainty"), d.get("quote")
     if not isinstance(flag, bool):
-        return Outcome("empty", message="계속기업 불확실성을 자료만으로 판단하지 못했습니다")
+        return audit_fallback(audit) or Outcome("empty", message="계속기업 불확실성을 자료만으로 판단하지 못했습니다")
     if not quote_in_source(quote, joined):
-        return Outcome("empty", message="계속기업 불확실성 판단의 근거 문장을 원문과 대조하지 못해 사용하지 않았습니다")
+        return audit_fallback(audit) or Outcome("empty", message="계속기업 불확실성 판단의 근거 문장을 원문과 대조하지 못해 사용하지 않았습니다")
     return _usage(Outcome("ok", {"verdict": "check" if flag else "clear", "basis": "ai", "quote": quote}), r)
+
+
+def audit_fallback(audit: dict | None) -> Outcome | None:
+    """AI 근거를 원문과 맞추지 못했을 때(2026-11-04 실제 리포트 17·20에서 두 번 '확인 불가'): 감사의견이 모두 '적정의견'이고
+    강조사항에 계속기업 언급이 없으면 코드가 '이상 없음'으로 판정한다. 그 밖에는 None(확인 불가 유지)."""
+    if not audit or audit.get("verdict") != "clear" or any("계속기업" in t for t in audit.get("emphasis", [])):
+        return None
+    return Outcome("ok", {"verdict": "clear", "basis": "audit", "quote": None, "opinion": audit.get("opinion")})
 
 
 # ───────────────────────── 특수관계자 거래

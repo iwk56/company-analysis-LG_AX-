@@ -206,9 +206,9 @@ def create_and_wait(client):
 def patch_external(monkeypatch, articles=None, points=None):
     seen = {}
 
-    async def fake_news(_client, query, today=None):
-        seen["query"] = query
-        return articles or []
+    async def fake_news(_client, query, display=30, sort="date", today=None):  # 첫 주제 검색어에만 기사를 돌려준다
+        seen.setdefault("queries", []).append((query, display, sort))
+        return (articles or []) if query == jobs.topic_queries("SK하이닉스")[0][1] else []
 
     async def fake_macro(_client, today=None):
         return [{"key": k, "label": k, "unit": u, "stat_code": "S", "source_url": "https://ecos.bok.or.kr",
@@ -232,10 +232,15 @@ def test_report_saves_articles_and_macro(api, monkeypatch):
     seen = patch_external(monkeypatch, arts, [{"date": "2026-11-02", "value": 1337.2}])
     job = create_and_wait(api)
     assert job["status"] == "done" and [s["status"] for s in job["steps"]] == ["done"] * 10
-    assert seen["query"] == "SK하이닉스"  # 회사명 하나로 검색
+    assert seen["queries"] == [(q, 5, "sim") for _, q in jobs.topic_queries("SK하이닉스")]
     d = api.get(f"/api/reports/{job['report_id']}").json()
     assert d["articles"]["query"] == "SK하이닉스" and d["articles"]["items"] == [
-        {"title": "기사 A", "summary": "요약 A", "link": "http://a/1", "published_at": "2026-11-01T09:00:00"}]
+        {"title": "기사 A", "summary": "요약 A", "link": "http://a/1", "published_at": "2026-11-01T09:00:00",
+         "topic": jobs.topic_queries("SK하이닉스")[0][1]}]
+    groups = d["articles"]["groups"]
+    assert [(g["query"], len(g["items"])) for g in groups] == [
+        (q, 1 if i == 0 else 0) for i, (_, q) in enumerate(jobs.topic_queries("SK하이닉스"))]
+    assert groups[0]["label"] == "사업 현황"
     assert [m["key"] for m in d["macro"]] == ["usd_krw", "base_rate"]
     assert d["macro"][0]["points"] == [{"date": "2026-11-02", "value": 1337.2}]
 
@@ -271,7 +276,7 @@ def test_old_report_without_collection_shows_none(api, monkeypatch):
 def test_news_failure_reports_step_and_saves_nothing(api, monkeypatch):
     patch_external(monkeypatch)
 
-    async def boom(_client, query, today=None):
+    async def boom(_client, query, display=30, sort="date", today=None):
         raise news.NewsError("NAVER API HUB 하루 호출 한도를 넘었습니다")
 
     monkeypatch.setattr(jobs, "fetch_news", boom)
@@ -354,15 +359,16 @@ def test_refresh_replaces_expired_articles(api, monkeypatch):
     age_articles(22)
     new = [{"title": "새 기사", "summary": "새 요약", "link": "http://a/9", "published_at": datetime(2026, 11, 3, 9, 0)}]
 
-    async def fresh(_client, query, today=None):
-        seen["refresh_query"] = query
-        return new
+    async def fresh(_client, query, display=30, sort="date", today=None):
+        seen.setdefault("refresh_queries", []).append(query)
+        return new if query == jobs.topic_queries("SK하이닉스")[-1][1] else []
 
     monkeypatch.setattr(jobs, "fetch_news", fresh)
     res = api.post(f"/api/reports/{rid}/articles/refresh")
     assert res.status_code == 200
     d = res.json()["articles"]
-    assert seen["refresh_query"] == "SK하이닉스" and d["expired"] is False and [a["title"] for a in d["items"]] == ["새 기사"]
+    assert seen["refresh_queries"][-1] == jobs.topic_queries("SK하이닉스")[-1][1] and len(seen["refresh_queries"]) == 6
+    assert d["expired"] is False and [a["title"] for a in d["items"]] == ["새 기사"] and d["groups"][5]["items"][0]["title"] == "새 기사"
     assert api.get(f"/api/reports/{rid}").json()["articles"]["items"][0]["link"] == "http://a/9"
 
 
@@ -388,10 +394,40 @@ def test_refresh_failure_keeps_expired_state(api, monkeypatch):
     rid = create_and_wait(api)["report_id"]
     age_articles(22)
 
-    async def boom(_client, query, today=None):
+    async def boom(_client, query, display=30, sort="date", today=None):
         raise news.NewsError("NAVER API HUB 하루 호출 한도를 넘었습니다")
 
     monkeypatch.setattr(jobs, "fetch_news", boom)
     res = api.post(f"/api/reports/{rid}/articles/refresh")
     assert res.status_code == 502 and "한도" in res.json()["detail"]
     assert api.get(f"/api/reports/{rid}").json()["articles"]["expired"] is True
+
+
+def test_topic_queries_are_business_topics():
+    assert [q for _l, q in news.topic_queries("LG전자")] == [
+        "LG전자 주요 사업 제품 매출", "LG전자 투자 증설 공장", "LG전자 신사업 전략 전환",
+        "LG전자 공급 계약 협력 고객", "LG전자 대표이사 인사 임원", "LG전자 리스크 지연 차질 우려",
+    ]
+    assert news.topic_label("LG전자 대표이사 인사 임원", "LG전자") == "경영진·조직"
+    assert news.topic_label("LG전자 인사", "LG전자") == "경영진·조직"  # 기존 저장 기사 호환
+    assert news.topic_label("LG전자", "LG전자") is None
+
+
+def test_articles_view_keeps_legacy_topics_visible():
+    from types import SimpleNamespace
+    from app.report_store import _articles_view
+
+    collected = news.now_kst()
+    search = SimpleNamespace(
+        query="LG전자", collected_at=collected, period_start=collected.date(), period_end=collected.date(),
+        articles=[SimpleNamespace(title="기존 기사", summary="요약", link="https://example.com/1",
+                                  published_at=collected, topic="LG전자 사업")],
+    )
+
+    result = _articles_view(search)
+
+    assert result["groups"] == [{
+        "label": "사업 현황", "query": "LG전자 사업",
+        "items": [{"title": "기존 기사", "summary": "요약", "link": "https://example.com/1",
+                   "published_at": collected.isoformat(), "topic": "LG전자 사업"}],
+    }]

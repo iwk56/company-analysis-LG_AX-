@@ -9,7 +9,7 @@ import httpx
 
 from . import ai_prompts as P
 from .ai_facts import Facts
-from .ai_verify import quote_in_source, unit_in_quote, unknown_numbers, verified_amount
+from .ai_verify import numbers_in, quote_in_source, unit_in_quote, unknown_numbers, verified_amount
 from .dart_docs import find_section, financial_notes, note_text
 from .llm import LlmError, LlmResult, call_json
 
@@ -215,31 +215,26 @@ def _clean_text(value, allowed: set[str], where: str, dropped: list[str]) -> str
     return value.strip()
 
 
-async def write_overview(client: httpx.AsyncClient, facts: Facts) -> Outcome:
+async def write_overview(client: httpx.AsyncClient, facts: Facts, pdf: tuple[str | None, list[dict]] | None = None) -> Outcome:
+    """pdf: 올린 사업보고서의 II-1 사업의 개요·II-2 주요 제품 및 서비스에서 고른 글과 사용 범위 (8-D, 1장 주력 사업). 없으면 코드 자료만."""
     sources = {"기업 정보": facts.blocks["overview"]}
     if "segments" in facts.blocks:
         sources["사업부문별 매출 (코드가 계산한 비중·증감률)"] = facts.blocks["segments"]
+    pdf_text, pdf_inputs = pdf or (None, [])
+    allowed = set(facts.allowed)
+    if pdf_text:
+        sources["사업보고서 · 사업의 개요·주요 제품 및 서비스"] = pdf_text
+        allowed |= numbers_in(pdf_text)
     try:
         r = await ask(client, "write_overview", "write", P.user_message(P.WRITE_OVERVIEW, sources))
     except LlmError as e:
         return _failed(e)
     d, dropped = r.data, []
-    overview = _clean_text(d.get("overview"), facts.allowed, "기업 개요", dropped)
-    bcg = None
-    raw = d.get("bcg") if "segments" in facts.blocks else None
-    if isinstance(raw, dict):
-        names = {n.split(":")[0] for n in facts.blocks["segments"].splitlines()[1:]}
-        segs = []
-        for s in raw.get("segments") or []:
-            text = _clean_text(s.get("comment"), facts.allowed, f"BCG {s.get('name')}", dropped)
-            if text and s.get("name") in names:
-                segs.append({"name": s["name"], "comment": text})
-        summary = _clean_text(raw.get("summary"), facts.allowed, "BCG 요약", dropped)
-        if summary or segs:
-            bcg = {"summary": summary, "segments": segs}
+    overview = _clean_text(d.get("overview"), allowed, "기업 개요", dropped)
+    bcg = None  # BCG 해석은 2026-11-04 삭제(점유율 없이 비중만 봐서 얕음). 저장 형식은 그대로 둔다
     if overview is None and bcg is None:
         return Outcome("failed", message="AI 문장이 자료에 없는 숫자를 포함하거나 비어 있어 사용하지 않았습니다: " + "; ".join(dropped), warnings=dropped)
-    return _usage(Outcome("ok", {"overview": overview, "bcg": bcg}, warnings=dropped), r)
+    return _usage(Outcome("ok", {"overview": overview, "bcg": bcg, "inputs": pdf_inputs}, warnings=dropped), r)
 
 
 # ───────────────────────── 해석 2: 한 줄 요약 + 주석 ⓘ

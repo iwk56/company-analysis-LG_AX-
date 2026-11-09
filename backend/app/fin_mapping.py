@@ -37,6 +37,24 @@ RULES = (
     # 손익계산서에 이자비용이 따로 없는 기업이 많아 금융비용으로 대체하고 그 사실을 표시한다
     Rule("interest_expense", "이자비용(또는 금융비용)", INCOME, ("ifrs-full_InterestExpense", "ifrs-full_FinanceCosts"),
          ("이자비용", "금융비용", "금융원가")),
+    # 2026-11-04 손익계산서 분석: 매출총이익·판관비·금융손익·세전이익·법인세 (없으면 화면에서 계산 가능한 것만 계산)
+    Rule("gross_profit", "매출총이익", INCOME, ("ifrs-full_GrossProfit",), ("매출총이익", "매출총이익(손실)")),
+    Rule("sga", "판매비와관리비", INCOME, ("dart_TotalSellingGeneralAdministrativeExpenses", "ifrs-full_SellingGeneralAndAdministrativeExpense"),
+         ("판매비와관리비", "판매비와일반관리비")),
+    Rule("finance_income", "금융수익", INCOME, ("ifrs-full_FinanceIncome",), ("금융수익",)),
+    Rule("finance_costs", "금융비용", INCOME, ("ifrs-full_FinanceCosts",), ("금융비용", "금융원가")),
+    Rule("pretax_income", "법인세비용차감전순이익", INCOME, ("ifrs-full_ProfitLossBeforeTax",),
+         ("법인세비용차감전순이익", "법인세비용차감전순이익(손실)", "법인세차감전순이익")),
+    Rule("income_tax", "법인세비용", INCOME, ("ifrs-full_IncomeTaxExpenseContinuingOperations",), ("법인세비용", "법인세비용(수익)")),
+    # 2026-11-04 현금흐름 분석: 설비투자·주주환원·차입·법인세 납부·기말 현금 (지출 항목은 회사마다 부호가 달라 calc에서 절댓값)
+    Rule("capex_ppe", "유형자산의 취득", ("CF",), ("ifrs-full_PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",), ("유형자산의취득",)),
+    Rule("capex_intangible", "무형자산의 취득", ("CF",), ("ifrs-full_PurchaseOfIntangibleAssetsClassifiedAsInvestingActivities",), ("무형자산의취득",)),
+    Rule("dividends_paid", "배당금의 지급", ("CF",), ("ifrs-full_DividendsPaidClassifiedAsFinancingActivities", "ifrs-full_DividendsPaid"), ("배당금의지급", "배당금지급")),
+    Rule("buyback", "자기주식의 취득", ("CF",), ("ifrs-full_PaymentsToAcquireOrRedeemEntitysShares", "dart_AcquisitionOfTreasuryShares"), ("자기주식의취득",)),
+    Rule("borrowing_in", "차입금의 차입", ("CF",), ("ifrs-full_ProceedsFromBorrowingsClassifiedAsFinancingActivities",), ("차입금의차입", "단기차입금의차입", "장기차입금의차입")),
+    Rule("borrowing_out", "차입금의 상환", ("CF",), ("ifrs-full_RepaymentsOfBorrowingsClassifiedAsFinancingActivities",), ("차입금의상환", "단기차입금의상환", "장기차입금의상환")),
+    Rule("tax_paid", "법인세의 납부", ("CF",), ("ifrs-full_IncomeTaxesPaidRefundClassifiedAsOperatingActivities",), ("법인세의납부", "법인세납부")),
+    Rule("cash_end", "기말 현금및현금성자산", ("CF",), ("dart_CashAndCashEquivalentsAtEndOfPeriodCf",), ("기말현금및현금성자산", "기말의현금및현금성자산")),
     Rule("cfo", "영업활동 현금흐름", ("CF",), ("ifrs-full_CashFlowsFromUsedInOperatingActivities",), ("영업활동현금흐름",)),
     Rule("cfi", "투자활동 현금흐름", ("CF",), ("ifrs-full_CashFlowsFromUsedInInvestingActivities",), ("투자활동현금흐름",)),
     Rule("cff", "재무활동 현금흐름", ("CF",), ("ifrs-full_CashFlowsFromUsedInFinancingActivities",), ("재무활동현금흐름",)),
@@ -59,7 +77,9 @@ CANDIDATE_KEYWORDS = {
     "revenue": ("매출", "수익"), "operating_income": ("영업",), "net_income": ("순이익", "순손익"),
     "net_income_parent": ("지배",), "equity_parent": ("지배",), "receivables": ("채권",), "inventory": ("재고",),
     "cost_of_sales": ("원가",), "interest_expense": ("이자", "금융"), "current_assets": ("유동자산",),
-    "current_liabilities": ("유동부채",),
+    "current_liabilities": ("유동부채",), "gross_profit": ("총이익",), "sga": ("판매비", "관리비"),
+    "finance_income": ("금융수익",), "finance_costs": ("금융비용", "금융원가"), "pretax_income": ("법인세", "세전"),
+    "income_tax": ("법인세",),
 }
 
 
@@ -92,12 +112,14 @@ def find_row(rows: list[dict], rule: Rule) -> Matched | None:
         for sj in rule.sj:
             for r in rows:
                 if r.get("sj_div") == sj and r.get("account_id") == account_id:
-                    return Matched(r, "id", SUBSTITUTE_NOTES.get(account_id))
+                    # 대체 안내는 그 항목의 첫 ID가 아닐 때만(금융비용 항목 자체는 '이자비용 대체'가 아니다)
+                    return Matched(r, "id", SUBSTITUTE_NOTES.get(account_id) if account_id != rule.ids[0] else None)
     names = {_norm(n) for n in rule.names}  # 2) ID가 없으면 이름
     for sj in rule.sj:
         for r in rows:
             if r.get("sj_div") == sj and _norm(r.get("account_nm", "")) in names:
-                return Matched(r, "name", SUBSTITUTE_NAMES.get(_norm(r["account_nm"])))
+                first = _norm(rule.names[0]) if rule.names else None
+                return Matched(r, "name", SUBSTITUTE_NAMES.get(_norm(r["account_nm"])) if _norm(r["account_nm"]) != first else None)
     return None
 
 

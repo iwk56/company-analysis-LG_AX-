@@ -23,7 +23,10 @@ def run(coro):
 # ---------- 계정 매핑 (실제 SK하이닉스 2025 연결재무제표에서 뽑은 행) ----------
 def test_real_sample_maps_all_17_items_with_exact_amounts():
     values, matched = extract(SAMPLE["list"])
-    assert set(matched) == set(RULES_BY_FIELD)  # 17개 모두 매칭
+    INCOME_EXTRA = {"gross_profit", "sga", "finance_income", "finance_costs", "pretax_income", "income_tax",  # 2026-11-04 추가(샘플은 일부 행만 있음)
+                    "capex_ppe", "capex_intangible", "dividends_paid", "buyback", "borrowing_in", "borrowing_out", "tax_paid", "cash_end"}
+    assert set(RULES_BY_FIELD) - INCOME_EXTRA <= set(matched)  # 기존 17개 모두 매칭
+    assert matched["finance_costs"].note is None and matched["interest_expense"].note  # 금융비용 항목 자체엔 '대체' 안내가 없다
     v = values["thstrm"]
     assert v["revenue"] == 97146675000000 and v["operating_income"] == 47206319000000
     assert v["net_income"] == 42947902000000 and v["net_income_parent"] == 42919287000000
@@ -125,6 +128,30 @@ def test_five_years_use_the_latest_report_that_contains_each_year():
     assert res.years[2021].revenue == 8000 - 2000       # 2023 보고서의 전전기 열 = 5번째 연도(첫 연도)
     assert f.calls == [(2025, "CFS"), (2024, "CFS"), (2023, "CFS")]  # 기업당 3건
     assert res.source_link(2021).endswith("rcpNo=R2023")
+
+
+def test_balance_details_collect_account_changes_and_related_cashflows_by_year():
+    filings = five_year_company()
+    for (filing_year, _), data in filings.items():
+        base = (filing_year - 2000) * 100
+        data["list"].extend([
+            row("BS", "ifrs-full_PropertyPlantAndEquipment", "유형자산", str(base + 30), str(base + 20), str(base + 10)),
+            row("BS", "ifrs-full_ShortTermBorrowings", "단기차입금", str(base + 15), str(base + 10), str(base + 5)),
+            row("CF", "ifrs-full_CashFlowsFromUsedInFinancingActivities", "재무활동 현금흐름",
+                str(base), str(base - 1), str(base - 2)),
+            row("CF", "x_Borrowings", "차입금의 차입", str(base + 4), str(base + 3), str(base + 2)),
+        ])
+
+    res = run(collect_company(FakeFetcher(filings), "c", TODAY))
+
+    assets = {item["key"]: item for item in res.balance_details[2025]["accounts"]["assets"]}
+    liabilities = {item["key"]: item for item in res.balance_details[2025]["accounts"]["liabilities"]}
+    assert assets["ifrs-full_PropertyPlantAndEquipment"] == {
+        "key": "ifrs-full_PropertyPlantAndEquipment", "name": "유형자산", "value": 2530,
+    }
+    assert liabilities["ifrs-full_ShortTermBorrowings"]["value"] == 2515
+    assert {"section": "financing", "name": "차입금의 차입", "value": 2504} in res.balance_details[2025]["cashflow"]
+    assert 2021 in res.balance_details and 2024 in res.balance_details
 
 
 def test_collected_years_feed_the_calculation_module():
@@ -292,3 +319,54 @@ def test_interest_coverage_is_labelled_as_finance_cost_basis_when_substituted():
     assert res2.interest_basis() == "금융비용"
     assert show_financials.ratio_labels(res2)["interest_coverage"] == "이자보상배율(금융비용 기준)"
     assert any("외환·파생상품 손실" in n for n in res2.notes)
+
+
+def test_income_statement_steps_fill_what_can_be_computed_and_split_operating_change():
+    from app.calc.income import compute_income
+    from app.calc.models import YearFinancials
+    y1 = YearFinancials(2024, revenue=100, cost_of_sales=60, operating_income=20, pretax_income=25, finance_income=4, finance_costs=2,
+                        income_tax=5, net_income=20)
+    y2 = YearFinancials(2025, revenue=150, cost_of_sales=80, sga=25, operating_income=45, pretax_income=40, finance_income=1, finance_costs=6,
+                        income_tax=10, net_income=30)
+    inc = compute_income({2024: y1, 2025: y2})
+    a, b = inc["2024"], inc["2025"]
+    assert a["rows"]["gross_profit"] == 40 and a["rows"]["sga"] == 20 and a["derived"] == ["gross_profit", "sga"]
+    assert b["rows"]["other_operating"] == 0 and b["rows"]["non_operating"] == -5 and b["rows"]["finance_net"] == -5
+    assert b["margins"]["gross_profit"] == 70 / 150 and b["effective_tax_rate"] == 0.25
+    br = b["bridge"]  # 영업이익 +25 = 매출 증가 50×40% = 20, 매출총이익률 효과 70−40−20 = 10, 판관비 −5
+    assert (br["total"], br["volume"], br["margin"], br["sga"], br["other"]) == (25, 20, 10, -5, 0) and a["bridge"] is None
+
+
+def test_income_notes_parse_groups_by_subtotal_and_scale_units():
+    from app.income_notes import changes, parse_note
+    text = ("27. 금융수익 및 금융비용 (연결)\n당기 | (단위 : 백만원)\n공시금액\n이자수익 | 494\n외환차이 | 2,738\n금융수익 소계 | 3,232\n"
+            "외환차이 | 3,186\n파생상품관련손실 | (10)\n금융비용 소계 | 3,176\n전기 | (단위 : 백만원)\n이자수익 | 344\n외환차이 | 4,220\n"
+            "금융수익 소계 | 4,564\n외환차이 | 3,952\n파생상품관련손실 | -\n금융비용 소계 | 3,952\n")
+    rows = changes(parse_note(text))
+    fx = [r for r in rows if r["item"] == "외환차이"]
+    assert [(r["group"], r["current"], r["change"]) for r in fx] == [("금융수익", 2_738_000_000, -1_482_000_000), ("금융비용", 3_186_000_000, -766_000_000)]
+    assert next(r for r in rows if r["item"] == "파생상품관련손실")["current"] == -10_000_000
+    assert next(r for r in rows if r["item"] == "금융수익 소계")["is_total"]
+
+
+def test_cash_detail_signs_outflows_and_bridge_closes():
+    from app.calc.cash import compute_cash, detail
+    from app.calc.models import YearFinancials
+    rows = [{"sj_div": "CF", "account_id": "dart_CashAndCashEquivalentsAtBeginningOfPeriodCf", "account_nm": "기초 현금", "thstrm_amount": "100"},
+            {"sj_div": "CF", "account_id": "dart_CashAndCashEquivalentsAtEndOfPeriodCf", "account_nm": "기말 현금", "thstrm_amount": "130"},
+            {"sj_div": "CF", "account_id": "ifrs-full_CashFlowsFromUsedInFinancingActivities", "account_nm": "재무활동 현금흐름", "thstrm_amount": "-20"},
+            {"sj_div": "CF", "account_id": "x", "account_nm": "배당금의 지급", "thstrm_amount": "15"},
+            {"sj_div": "CF", "account_id": "y", "account_nm": "차입금의 상환", "thstrm_amount": "5"},
+            {"sj_div": "CF", "account_id": "ifrs-full_CashFlowsFromUsedInInvestingActivities", "account_nm": "투자활동 현금흐름", "thstrm_amount": "-50"},
+            {"sj_div": "CF", "account_id": "z", "account_nm": "유형자산의 취득", "thstrm_amount": "40"},
+            {"sj_div": "CF", "account_id": "w", "account_nm": "단기금융상품의 감소", "thstrm_amount": "3"},
+            {"sj_div": "CF", "account_id": "ifrs-full_CashFlowsFromUsedInOperatingActivities", "account_nm": "영업활동 현금흐름", "thstrm_amount": "100"}]
+    det = detail(rows, lambda t: float(t) if t is not None else None)
+    signs = {i["name"]: i["current"] for i in det["items"] if not i["total"]}
+    assert signs == {"배당금의 지급": -15, "차입금의 상환": -5, "유형자산의 취득": -40, "단기금융상품의 감소": 3}
+    y = YearFinancials(2025, revenue=200, net_income=80, cfo=100, cfi=-50, cff=-20, capex_ppe=40, dividends_paid=15, borrowing_out=5)
+    c = compute_cash({2025: y}, det)
+    m = c["years"]["2025"]
+    assert (m["capex"], m["fcf"], m["shareholder_returns"], m["net_borrowing"], m["cfo_to_net_income"]) == (40, 60, 15, -5, 1.25)
+    assert c["bridge"]["unexplained"] == 0 and c["bridge"]["begin"] == 100 and c["bridge"]["end"] == 130
+    assert c["bridge"]["steps"][2]["label"] == "설비투자 외 투자활동 순액"

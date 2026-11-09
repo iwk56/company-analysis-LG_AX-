@@ -23,7 +23,36 @@ def init(url: str = DB_URL) -> None:
         def _foreign_keys_on(dbapi_conn, _record):  # SQLite는 기본이 꺼져 있어 리포트를 지울 때 딸린 행도 지우려면 켜야 한다
             dbapi_conn.execute("PRAGMA foreign_keys=ON")
     Base.metadata.create_all(engine)
+    _add_missing_columns()
     SessionLocal = sessionmaker(engine, expire_on_commit=False)
+
+
+# 이미 있는 DB에 나중에 더한 열 (create_all은 있는 테이블에 열을 더하지 않는다). (테이블, 열, SQL 타입)
+_LATER_COLUMNS = (("articles", "topic", "VARCHAR"),
+                  ("financial_years", "gross_profit", "BIGINT"),
+                  ("financial_years", "sga", "BIGINT"),
+                  ("financial_years", "finance_income", "BIGINT"),
+                  ("financial_years", "finance_costs", "BIGINT"),
+                  ("financial_years", "pretax_income", "BIGINT"),
+                  ("financial_years", "income_tax", "BIGINT"),
+                  ("financial_years", "capex_ppe", "BIGINT"),
+                  ("financial_years", "capex_intangible", "BIGINT"),
+                  ("financial_years", "dividends_paid", "BIGINT"),
+                  ("financial_years", "buyback", "BIGINT"),
+                  ("financial_years", "borrowing_in", "BIGINT"),
+                  ("financial_years", "borrowing_out", "BIGINT"),
+                  ("financial_years", "tax_paid", "BIGINT"),
+                  ("financial_years", "cash_end", "BIGINT"))
+
+
+def _add_missing_columns() -> None:
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        for table, col, sql_type in _LATER_COLUMNS:
+            if table in insp.get_table_names() and col not in {c["name"] for c in insp.get_columns(table)}:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {sql_type}"))
 
 
 def ensure_init() -> None:

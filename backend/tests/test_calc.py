@@ -87,9 +87,11 @@ def test_missing_values_are_no_data():
 
 def test_operating_income_growth_loss_to_profit_and_back():
     up = compute_ratios(Y(2023, operating_income=30), Y(2022, operating_income=-20))
-    assert up["operating_income_growth"].value == approx(2.5)  # (30-(-20)) ÷ |-20|
+    assert up["operating_income_growth"].value is None and up["operating_income_growth"].na_reason == "흑자전환"
     down = compute_ratios(Y(2023, operating_income=-20), Y(2022, operating_income=30))
-    assert down["operating_income_growth"].value == approx(-50 / 30)
+    assert down["operating_income_growth"].na_reason == "적자전환"
+    still = compute_ratios(Y(2023, operating_income=-5), Y(2022, operating_income=-20))
+    assert still["operating_income_growth"].na_reason == "적자지속"
     zero = compute_ratios(Y(2023, operating_income=30), Y(2022, operating_income=0))
     assert zero["operating_income_growth"].na_reason == ZERO_DENOMINATOR
 

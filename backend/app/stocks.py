@@ -52,10 +52,16 @@ async def fetch_prices(client: httpx.AsyncClient, stock_code: str, start: date, 
         raise StockError(str(e)) from None
     params = {"serviceKey": key, "numOfRows": MAX_ROWS, "pageNo": 1, "resultType": "json", "likeSrtnCd": stock_code,
               "beginBasDt": start.strftime("%Y%m%d"), "endBasDt": (end + timedelta(days=1)).strftime("%Y%m%d")}  # endBasDt는 '미만'
-    try:
-        resp = await client.get(URL, params=params, timeout=TIMEOUT)
-    except httpx.HTTPError as e:  # 예외 문자열에는 키가 담긴 URL이 있을 수 있어 종류만 남긴다
-        raise StockError(f"공공데이터포털에 연결하지 못했습니다 ({type(e).__name__})") from None
+    resp = None
+    for attempt in range(2):  # 2026-11-04: 포털이 가끔 30초 넘게 걸려 시간 초과면 한 번 더(60초) 기다린다
+        try:
+            resp = await client.get(URL, params=params, timeout=TIMEOUT * (attempt + 1))
+            break
+        except httpx.TimeoutException as e:
+            if attempt == 1:
+                raise StockError(f"공공데이터포털에 연결하지 못했습니다 ({type(e).__name__}, 두 번 시도)") from None
+        except httpx.HTTPError as e:  # 예외 문자열에는 키가 담긴 URL이 있을 수 있어 종류만 남긴다
+            raise StockError(f"공공데이터포털에 연결하지 못했습니다 ({type(e).__name__})") from None
     text = resp.text
     if "SERVICE_KEY_IS_NOT_REGISTERED" in text:
         raise StockError("공공데이터포털 인증키를 확인해 주세요 (금융위원회_주식시세정보 활용신청·backend/.env의 DATA_GO_KR_KEY)")

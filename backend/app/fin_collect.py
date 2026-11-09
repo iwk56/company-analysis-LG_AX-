@@ -12,8 +12,10 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from .calc.models import YearFinancials
+from .calc.balance import snapshot as balance_snapshot
 from .fin_fetch import FinancialsFetcher
-from .fin_mapping import COLUMNS, RULES, RULES_BY_FIELD, extract, unmatched_candidates
+from .calc.cash import detail as cash_detail
+from .fin_mapping import COLUMNS, RULES, RULES_BY_FIELD, extract, parse_amount, unmatched_candidates
 
 DART_VIEWER = "https://dart.fss.or.kr/dsaf001/main.do?rcpNo={}"
 CORE_FIELDS = ("revenue", "total_assets")  # 둘 다 없으면 그 연도는 자료가 없는 것으로 본다
@@ -36,6 +38,8 @@ class CompanyFinancials:
     candidates: dict[str, list[str]] = field(default_factory=dict)  # 항목 → 후보 계정(최신 보고서 기준)
     notes: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    cf_detail: dict | None = None  # 최신 보고서 현금흐름표 전체 행 (2026-11-04 현금흐름 분석)
+    balance_details: dict[int, dict] = field(default_factory=dict)  # 5개년 재무상태표 계정·현금흐름표 세부 행
 
     @property
     def year_count(self) -> int:
@@ -78,6 +82,7 @@ def _add_filing(result: CompanyFinancials, data: dict, filing_year: int, columns
             vals["equity_parent"] = vals.get("total_equity")
         result.years[year] = YearFinancials(year=year, **{f: vals.get(f) for f in RULES_BY_FIELD})
         result.receipts[year] = rcept
+        result.balance_details[year] = balance_snapshot(rows, f"{col}_amount", parse_amount)
         for f, m in matched.items():
             result.used[(year, f)] = {"account_id": m.row["account_id"], "account_nm": m.row["account_nm"],
                                       "sj_div": m.row["sj_div"], "by": m.by}
@@ -105,6 +110,7 @@ async def collect_company(fetcher: FinancialsFetcher, corp_code: str, today: dat
     if not any(r.get("account_id") in ("ifrs-full_CurrentAssets", "ifrs-full_CurrentLiabilities") or
                r.get("account_nm") in ("유동자산", "유동부채") for r in rows if r.get("sj_div") == "BS"):
         result.warnings.append("재무상태표에 유동/비유동 구분이 없습니다 — 금융업일 수 있음")
+    result.cf_detail = cash_detail(rows, parse_amount)
     latest_missing = result.missing.get(latest_year, [])
     result.candidates = unmatched_candidates(rows, latest_missing)
     return result

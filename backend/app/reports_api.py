@@ -1,4 +1,5 @@
 """리포트 생성·진행 상태·목록·상세·삭제 API (docs/spec.md F3, F7)."""
+import logging
 import re
 
 import httpx
@@ -11,6 +12,7 @@ from .enrich import TASKS, AlreadyRunning, enrich_report
 from .corp_codes import load_listed_corps
 from .dart import DartError
 from .db import get_session
+from . import peers
 from .industry import is_financial
 from .jobs import collect_news, manager
 from .news import NewsError
@@ -18,6 +20,7 @@ from .pdf_uploads import store as uploads
 from .ksic import industry_name
 from .report_models import Report
 
+log = logging.getLogger("uvicorn.error")
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
@@ -28,18 +31,22 @@ SECTION_KEY = re.compile(r"^[a-z][a-z0-9_]{0,39}$")  # 섹션이 늘어도 키 �
 
 class CreateReport(BaseModel):
     corp_code: str
-    annual_upload_id: str | None = None  # 확인된 사업보고서 PDF (필수)
+    annual_upload_id: str | None = None  # 확인된 사업보고서 PDF (선택, 없으면 DART 원문 자동)
     interim_upload_id: str | None = None  # 확인된 반기/3분기보고서 PDF (선택)
     competitors: list[str] = []  # 경쟁사 고유번호 0~4곳. 2026-11-03부터 화면은 보내지 않는다(코드 유지, spec F2)
+    auto_competitors: bool = False  # 2026-11-04: 경쟁사를 비워 두면 업종·시가총액·AI로 자동 선정 (화면은 true로 보낸다)
 
 
 EXPIRED = "올린 PDF를 찾을 수 없습니다 (서버를 다시 켰거나 2시간이 지났습니다). PDF를 다시 올려 주세요"
 
 
 def _pdfs(corp_code: str, annual_id: str | None, interim_id: str | None) -> list:
-    """생성에 쓸 확인된 PDF. 사업보고서는 필수, 반기/3분기는 선택 (spec F2 "PDF를 올리지 않으면")."""
+    """생성에 쓸 확인된 PDF (선택). 2026-11-04부터 PDF가 없으면 생성 단계가 DART 공시 원문을 자동으로 받는다.
+    반기/3분기 PDF만 올리고 사업보고서 PDF가 없으면 거절한다(사업보고서는 원문, 반기는 PDF로 섞지 않는다)."""
     if not annual_id:
-        raise HTTPException(status_code=400, detail="사업보고서 PDF를 먼저 올려 주세요")
+        if interim_id:
+            raise HTTPException(status_code=400, detail="반기/3분기 PDF를 쓰려면 사업보고서 PDF도 함께 올려 주세요")
+        return []
     out = []
     for slot, upload_id in (("annual", annual_id), ("interim", interim_id)):
         if not upload_id:
@@ -102,7 +109,27 @@ async def create_report(body: CreateReport):
             competitors.append(await _validate_company(code))
         except HTTPException as e:
             raise HTTPException(status_code=e.status_code, detail=f"경쟁사 선택 오류({code}): {e.detail}")
+    if not codes and body.auto_competitors:
+        competitors = await _auto_competitors(company)
     return manager.start(company, competitors, pdfs).to_dict()
+
+
+async def _auto_competitors(company: dict) -> list[dict]:
+    """업종 조사 캐시 + 시가총액 + AI로 경쟁사 최대 3곳 (peers.suggest). 실패하면 경쟁사 없이 만든다(리포트는 계속)."""
+    try:
+        async with httpx.AsyncClient() as client:
+            picked = await peers.suggest(client, company, await load_listed_corps(client))
+    except Exception as e:  # noqa: BLE001 — 경쟁사 고르기 실패로 리포트 생성을 막지 않는다
+        log.warning("경쟁사 자동 선정 실패: %s", type(e).__name__)
+        return []
+    out = []
+    for p in picked:
+        try:
+            c = await _validate_company(p["corp_code"])
+        except HTTPException:
+            continue
+        out.append({**c, "pick_reason": p["reason"], "picked_by": p["picked_by"]})
+    return out
 
 
 @router.post("/jobs/{job_id}/retry", status_code=202)
@@ -137,6 +164,10 @@ def get_report(report_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다")
     # 아직 만들지 않은 AI 작업 (기능이 나중에 생겨 기존 리포트에 없는 것 포함). 화면이 [AI 해석 만들기]를 보여주는 데 쓴다
     report["ai_pending"] = [k for k in TASKS if k not in report["enrichments"]]
+    report["ai_retryable"] = [
+        key for key in TASKS
+        if report["enrichments"].get(key, {}).get("status") == "failed"
+    ]
     return report
 
 
@@ -167,7 +198,14 @@ async def run_ai(report_id: int, session: Session = Depends(get_session)):
     except AlreadyRunning:
         raise HTTPException(status_code=409, detail="이 리포트의 AI 해석을 이미 만드는 중입니다. 잠시 뒤 다시 확인해 주세요")
     session.expire_all()
-    return {"enrichments": report_store.get_report(session, report_id)["enrichments"]}
+    report = report_store.get_report(session, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다")
+    retryable = [
+        key for key in TASKS
+        if report["enrichments"].get(key, {}).get("status") == "failed"
+    ]
+    return {"enrichments": report["enrichments"], "ai_retryable": retryable}
 
 
 @router.post("/{report_id}/articles/refresh")

@@ -9,10 +9,6 @@ export const SECTION_KEYS = [
   'recent_results', // 2장 최근 실적
   'topics', // 2장 공시 주제 묶음
   'swot', // 3장 SWOT
-  'tasks', // 3장 회사의 과제와 필요한 역량 (8-B 새 키)
-  'page4', // 4장 직무별 기여 아이디어
-  'watch', // 4장 예상 면접 질문 (기존 지켜볼 점)
-  'essay_numbers', // 4장 자기소개서에 쓸 숫자 모음 (8-B 새 키)
   'pest', // 부록 A PEST
   'macro', // 부록 A 경제 환경 민감도(환율·기준금리)
   'five_forces', // 부록 B 5 Forces
@@ -23,6 +19,18 @@ export const SECTION_KEYS = [
   'accounting', // 부록 C 회계 이슈 체크
   'stocks', // 부록 D 주가 흐름 비교
   'competitors', // 부록 E 경쟁사 비교
+  // 2026-11-03 취업 준비생 질문 구성으로 새로 만든 섹션 (코멘트는 화면에서 숨김)
+  'industry', // 업계에서 어떤 위치예요? (점유율·경쟁사·고객)
+  'future', // 앞으로 어디로 가요? (경영진단·연구개발·투자·신사업)
+  'caution', // 조심할 건 없어요? (체크리스트·위험 요인)
+  'mda', // 실적 탭: 경영진이 설명한 실적 (2026-11-04)
+  'business', // 사업 구조 탭: 제품·매출 구성·부문 손익·생산·원재료·수주 (2026-11-04)
+  'subsidiaries', // 사업 구조 탭: 출자 회사 (2026-11-04)
+  'peer_insight', // 산업·경쟁 탭: 경쟁사와 비교한 해석 (2026-11-04)
+  'income', // 실적 탭: 손익계산서 분석 (2026-11-04)
+  'balance', // 재무상태 탭: 재무상태표 요약 (2026-11-04)
+  'cash_analysis', // 현금흐름 탭: 현금흐름 분석 (2026-11-04)
+  'profit_ratios', // 실적 탭: 수익성·성장성 비율 (2026-11-04)
   // 'articles'(2장 네이버 검색결과)는 약관상 검색결과 뒤에 다른 내용을 붙이지 않으려고 코멘트란을 두지 않는다
   // 1장 종합 한 줄 평가·업계 위치는 코멘트란이 없다
 ] as const
@@ -30,4 +38,4 @@ export const SECTION_KEYS = [
 export type SectionKey = (typeof SECTION_KEYS)[number]
 
 /** 부록(기본 접힘) 섹션. [모두 펼치기]가 이 목록을 연다 */
-export const APPENDIX_KEYS: readonly SectionKey[] = ['pest', 'macro', 'five_forces', 'trend', 'ratios', 'dupont', 'cashflow', 'accounting', 'stocks', 'competitors']
+export const APPENDIX_KEYS: readonly SectionKey[] = ['pest', 'five_forces', 'trend', 'ratios', 'dupont', 'cashflow', 'accounting', 'stocks', 'competitors']

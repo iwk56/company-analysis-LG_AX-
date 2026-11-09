@@ -61,7 +61,7 @@ def _amount() -> Mapped[int | None]:
 
 
 class FinancialYear(Base):
-    """원자료: 연도별 표준 항목 17개(없으면 NULL)."""
+    """원자료: 연도별 표준 항목 31개(없으면 NULL). 손익계산서 분석 6개는 2026-11-04 추가(예전 리포트는 NULL)."""
     __tablename__ = "financial_years"
     __table_args__ = (UniqueConstraint("report_id", "year"),)
 
@@ -87,6 +87,20 @@ class FinancialYear(Base):
     cfo = _amount()
     cfi = _amount()
     cff = _amount()
+    gross_profit = _amount()  # 매출총이익 (2026-11-04)
+    sga = _amount()  # 판매비와관리비 (2026-11-04)
+    finance_income = _amount()  # 금융수익 (2026-11-04)
+    finance_costs = _amount()  # 금융비용 (2026-11-04)
+    pretax_income = _amount()  # 법인세비용차감전순이익 (2026-11-04)
+    income_tax = _amount()  # 법인세비용 (2026-11-04)
+    capex_ppe = _amount()  # 유형자산의 취득 (2026-11-04)
+    capex_intangible = _amount()  # 무형자산의 취득 (2026-11-04)
+    dividends_paid = _amount()  # 배당금의 지급 (2026-11-04)
+    buyback = _amount()  # 자기주식의 취득 (2026-11-04)
+    borrowing_in = _amount()  # 차입금의 차입 (2026-11-04)
+    borrowing_out = _amount()  # 차입금의 상환 (2026-11-04)
+    tax_paid = _amount()  # 법인세의 납부 (2026-11-04)
+    cash_end = _amount()  # 기말 현금및현금성자산 (2026-11-04)
 
 
 class RecentResult(Base):
@@ -163,6 +177,7 @@ class Article(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     search_id: Mapped[int] = mapped_column(ForeignKey("article_searches.id", ondelete="CASCADE"), index=True)
+    topic: Mapped[str | None] = mapped_column(String, nullable=True)  # 어느 주제 검색어의 결과인지 (2026-11-03부터, 예전 기사는 None)
     title: Mapped[str] = mapped_column(String)
     summary: Mapped[str] = mapped_column(String)
     link: Mapped[str] = mapped_column(String)

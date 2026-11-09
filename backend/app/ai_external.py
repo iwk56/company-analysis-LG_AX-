@@ -25,7 +25,7 @@ FORCE_KEYS = (("rivalry", "기존 경쟁"), ("new_entrants", "신규 진입 위�
               ("supplier_power", "공급자 교섭력"), ("buyer_power", "구매자 교섭력"))
 STRENGTHS = ("강", "중", "약")
 DIRECTIONS = ("긍정", "부정", "혼재", "자료 없음")
-EXTERNAL_SUMMARY_KEYS = ("pest", "five_forces", "topics", "macro", "watch")
+EXTERNAL_SUMMARY_KEYS = ("pest", "five_forces", "topics", "macro")  # watch(면접 질문)는 2026-11-04 삭제
 SWOT_KEYS = ("strengths", "weaknesses", "opportunities", "threats")
 ROLE_KEYS = ("fpa", "accounting", "treasury", "research")
 MAX_TOPICS = 3
@@ -68,9 +68,11 @@ def _fx_text(series: dict, digits: int, unit: str) -> tuple[str, float | None]:
 
 
 def external_sources(report: dict, facts: Facts, business: str | None, disclosures: dict | None,
-                     export_share: float | None = None) -> tuple[dict[str, Src], dict]:
+                     export_share: float | None = None, pdf_business: str | None = None) -> tuple[dict[str, Src], dict]:
     """외부 환경 호출에 넘길 자료와 민감도 표에 쓸 코드 값. (근거 키 → 자료, {"export_share", "fx"})
-    export_share: 6-A 사업부문 추출의 해외 매출 비중(코드 계산). 없으면 민감도는 '자료 없음'."""
+    export_share: 6-A 사업부문 추출의 해외 매출 비중(코드 계산). 없으면 민감도는 '자료 없음'.
+    pdf_business: 올린 사업보고서 PDF에서 고른 사업의 내용(8-D). 있으면 DART 원문(business) 대신 쓴다.
+    경쟁사 비교 결과(calc:competitors)는 넘기지 않는다(2026-11-03 방향 조정, spec F4)."""
     annual = next((s for s in report["sources"] if s["kind"] == "annual_report" and s["year"] == report["base_year"]), None)
     aurl, y = (annual or {}).get("url"), report["base_year"]
     srcs: dict[str, Src] = {}
@@ -79,13 +81,13 @@ def external_sources(report: dict, facts: Facts, business: str | None, disclosur
         if text:
             srcs[key] = Src(key, label, text, url)
 
+    add("pdf:business", f"{y} 사업보고서 · 사업의 내용", pdf_business)
     add("dart:business", f"{y} 사업보고서 · 사업의 내용", business)
     add("dart:segments", f"{y} 사업보고서 · 매출 구분 (AI 추출, 비중은 코드 계산)", facts.blocks.get("segments"))
     add("calc:core", "1페이지 핵심 지표·신호등 (코드 계산)", facts.blocks.get("core_cards"))
     add("calc:trend", "2페이지 실적 추이 (코드 계산)", facts.blocks.get("trend"))
     add("calc:ratios", "2페이지 재무비율 (코드 계산)", facts.blocks.get("ratios"))
     add("calc:cashflow", "2페이지 현금흐름 패턴 (코드 계산)", facts.blocks.get("cashflow"))
-    add("calc:competitors", "2페이지 경쟁사 비교 (코드 계산)", facts.blocks.get("competitors"))
     sens = {"export_share": export_share, "fx": None}
     for m in report.get("macro") or []:
         if m["key"] == "usd_krw":
@@ -171,7 +173,7 @@ async def write_external(client: httpx.AsyncClient, srcs: dict[str, Src], sens: 
     d, dropped = r.data, []
 
     pest_raw = d.get("pest") if isinstance(d.get("pest"), dict) else {}
-    pest = {k: _items(pest_raw.get(k), 2, srcs, allowed, f"PEST {k}", dropped) for k in PEST_KEYS}
+    pest = {k: _items(pest_raw.get(k), 3, srcs, allowed, f"PEST {k}", dropped) for k in PEST_KEYS}  # 2026-11-04: 항목마다 3개
 
     forces = []
     ff_raw = d.get("five_forces") if isinstance(d.get("five_forces"), dict) else {}
@@ -219,18 +221,15 @@ async def write_external(client: httpx.AsyncClient, srcs: dict[str, Src], sens: 
             sensitivity = {**sides, "sources": keys}
     sens_out = {"export_share": sens["export_share"], "fx": sens["fx"], "available": with_sens, **(sensitivity or {})}
 
-    w = d.get("watch") if isinstance(d.get("watch"), dict) else {}
-    watch = {"checks": _items(w.get("checks"), 3, srcs, allowed, "확인할 점", dropped),
-             "questions": _items(w.get("questions"), 3, srcs, allowed, "생각해볼 질문", dropped)}
     summaries = {}
     for k in EXTERNAL_SUMMARY_KEYS:
         text = _clean_text((d.get("summaries") or {}).get(k), allowed, f"요약 {k}", dropped)
         if text:
             summaries[k] = text
 
-    content = {"pest": pest, "five_forces": forces, "topics": topics, "sensitivity": sens_out, "watch": watch, "summaries": summaries,
+    content = {"pest": pest, "five_forces": forces, "topics": topics, "sensitivity": sens_out, "summaries": summaries,
                "disclosure_period": {k: (disclosures or {}).get(k) for k in ("period_start", "period_end", "total")}}
-    if not any(pest.values()) and not forces and not topics and not watch["checks"] and not watch["questions"]:
+    if not any(pest.values()) and not forces and not topics:
         return Outcome("failed", message="AI 문장이 근거가 없거나 자료에 없는 숫자를 포함해 사용하지 않았습니다: " + "; ".join(dropped[:5]),
                        warnings=dropped)
     content["source_index"] = source_index(srcs, _used_keys(content))
@@ -260,7 +259,9 @@ def external_text(ext: dict) -> dict[str, str]:
 
 
 # ───────────────────────── 호출 B: SWOT + 종합 한 줄 평가
-def swot_sources(report: dict, facts: Facts, ext: dict, accounting_text: str | None) -> dict[str, Src]:
+def swot_sources(report: dict, facts: Facts, ext: dict, accounting_text: str | None,
+                 extra: dict[str, tuple[str, str]] | None = None) -> dict[str, Src]:
+    """extra: 8-D 근거 (pdf:position·pdf:mda·pdf:focus·pdf:risks, check:* 체크리스트) — 근거 키 → (이름, 문단)."""
     srcs, _ = external_sources(report, facts, None, None)  # 사업의 내용·공시 목록은 빼고 1~2페이지 결과와 지표만
     aurl = srcs["calc:core"].url if "calc:core" in srcs else None
     if facts.blocks.get("recent_results"):
@@ -271,6 +272,9 @@ def swot_sources(report: dict, facts: Facts, ext: dict, accounting_text: str | N
     for k, text in external_text(ext).items():
         label = labels.get(k) or f"3페이지 공시 주제 {k[-1]}"
         srcs[k] = Src(k, label, text, None)
+    for k, (label, text) in (extra or {}).items():
+        if text:
+            srcs[k] = Src(k, label, text, aurl)
     return srcs
 
 
@@ -294,55 +298,3 @@ async def write_swot(client: httpx.AsyncClient, srcs: dict[str, Src]) -> Outcome
 
 
 # ───────────────────────── 호출 C: 4페이지 과제·역량·직무별 기여
-def page4_basis(facts: Facts, ext: dict, swot: dict) -> dict[str, Src]:
-    """4페이지 근거로 쓸 수 있는 섹션 (spec F4: SWOT 약점·위협, 공시 주제, 신호등, 민감도, 현금흐름 패턴). 표시 이름은 코드가 붙인다."""
-    out: dict[str, Src] = {}
-    if swot["swot"]["weaknesses"]:
-        out["swot_weaknesses"] = Src("swot_weaknesses", "1페이지 SWOT 약점", "\n".join(i["text"] for i in swot["swot"]["weaknesses"]))
-    if swot["swot"]["threats"]:
-        out["swot_threats"] = Src("swot_threats", "1페이지 SWOT 위협", "\n".join(i["text"] for i in swot["swot"]["threats"]))
-    ext_text = external_text(ext)
-    for i, t in enumerate(ext["topics"], 1):
-        out[f"topic_{i}"] = Src(f"topic_{i}", f"3페이지 공시 주제 {i} ({t['title']})", ext_text[f"p3:topic{i}"])
-    if facts.blocks.get("core_cards"):
-        out["signals"] = Src("signals", "1페이지 핵심 지표 신호등", facts.blocks["core_cards"])
-    if "p3:sensitivity" in ext_text:
-        out["sensitivity"] = Src("sensitivity", "3페이지 경제 환경 민감도", ext_text["p3:sensitivity"])
-    if facts.blocks.get("cashflow"):
-        out["cashflow"] = Src("cashflow", "2페이지 현금흐름 패턴", facts.blocks["cashflow"])
-    return out
-
-
-def _line(value, allowed, where, dropped) -> str | None:
-    text = _clean_text(value, allowed, where, dropped)
-    if text and SELF_INTRO.search(text):
-        dropped.append(f"{where}: 자기소개서식 표현")
-        return None
-    return text
-
-
-async def write_page4(client: httpx.AsyncClient, basis: dict[str, Src]) -> Outcome:
-    allowed = _allowed(basis)
-    try:
-        r = await ask(client, "write_page4", "write", _request_message(P.WRITE_PAGE4, basis))
-    except LlmError as e:
-        return _failed(e)
-    d, dropped, tasks = r.data, [], []
-    for i, t in enumerate(d.get("tasks") if isinstance(d.get("tasks"), list) else []):
-        if not isinstance(t, dict) or len(tasks) >= MAX_TASKS:
-            continue
-        where = f"과제 {i + 1}"
-        keys = _keys(t.get("basis"), basis)
-        title = _line(t.get("title"), allowed, f"{where} 이름", dropped)
-        detail = _line(t.get("detail"), allowed, f"{where} 설명", dropped)
-        if not keys:
-            dropped.append(f"{where}: 근거 섹션이 없거나 목록에 없음")
-            continue
-        if not title:
-            continue
-        ideas_raw = t.get("ideas") if isinstance(t.get("ideas"), dict) else {}
-        ideas = {k: _line(ideas_raw.get(k), allowed, f"{where} 기여 {k}", dropped) for k in ROLE_KEYS}
-        tasks.append({"title": title, "detail": detail, "basis": [{"key": k, "label": basis[k].label} for k in keys],
-                      "capability": _line(t.get("capability"), allowed, f"{where} 역량", dropped), "ideas": ideas})
-    summary = _line(d.get("summary"), allowed, "4페이지 요약", dropped)
-    return _usage(Outcome("ok", {"summary": summary, "tasks": tasks}, warnings=dropped), r)

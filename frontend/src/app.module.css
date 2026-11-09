@@ -9,6 +9,8 @@
 .sub { color: var(--sub); font-size: 0.85rem; }
 .muted { color: var(--sub); }
 .error { color: var(--bad); }
+.companyLogo { flex: none; width: 42px; height: 42px; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #f3f5f8; color: var(--accent); font-size: 0.8rem; font-weight: 700; }
+.companyLogo img { width: 100%; height: 100%; object-fit: contain; }
 .notice { background: #fff8e6; border: 1px solid #f0d58c; border-radius: 6px; padding: 8px 12px; margin: 8px 0; font-size: 0.9rem; }
 
 .row { display: flex; gap: 8px; }
@@ -50,7 +52,9 @@
 
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .metriccard { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+.metriccard .axisdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
 .metriccard .label { color: var(--sub); font-size: 0.85rem; }
+.metriccard .hint { color: var(--sub); font-size: 0.72rem; margin-top: 2px; }
 .metriccard .big { font-size: 1.6rem; font-weight: 700; margin: 4px 0; font-variant-numeric: tabular-nums; }
 .metriccard .delta { font-size: 0.85rem; color: var(--sub); }
 .metriccard .why { font-size: 0.78rem; color: var(--sub); margin-top: 4px; }
@@ -92,6 +96,23 @@
 .explain { background: #f7f5fc; border: 1px solid #e3dbf5; border-radius: 6px; padding: 8px 12px; margin: 10px 0; font-size: 0.92rem; }
 .explain p { margin: 4px 0; }
 .explain ul { margin: 4px 0; padding-left: 20px; }
+.analysisPoints { list-style: none; margin: 8px 0; padding: 0; counter-reset: analysis-point; }
+.analysisPoints li { counter-increment: analysis-point; position: relative; border-bottom: 1px solid var(--line); padding: 8px 8px 8px 30px; line-height: 1.7; }
+.analysisPoints li:last-child { border-bottom: 0; }
+.analysisPoints li::before { content: counter(analysis-point) '.'; position: absolute; left: 4px; top: 9px; color: var(--topic, var(--accent)); font-size: 0.85rem; font-weight: 700; }
+.analysisMeta { color: var(--sub); font-size: 0.82rem; margin: 6px 0; }
+.balanceGuide { margin: -3px 0 10px; color: var(--sub); font-size: 0.84rem; line-height: 1.6; }
+.balanceTotalChanges { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 14px; }
+.balanceTotalChange { display: flex; min-width: 0; justify-content: space-between; align-items: baseline; gap: 6px; padding: 9px 10px; border-bottom: 2px solid var(--topic, var(--accent)); background: var(--topic-soft, var(--tint, #f3f5f8)); }
+.balanceTotalChange span { color: var(--sub); font-size: 0.82rem; }
+.balanceTotalChange b { font-size: 0.95rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 520px) { .balanceTotalChanges { grid-template-columns: minmax(0, 1fr); gap: 5px; } }
+.dupontComment { border: 1px solid var(--line); border-radius: 8px; background: var(--tint, #f8f8f6); padding: 12px; margin: 12px 0; }
+.dupontFactors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px 0; }
+.dupontFactor { border: 1px solid var(--line); border-radius: 6px; background: var(--card); padding: 9px 10px; }
+.dupontFactor b, .dupontFactor span { display: block; }
+.dupontFactor span { margin-top: 4px; font-variant-numeric: tabular-nums; }
+.dupontFactor small { display: block; color: var(--sub); line-height: 1.5; margin-top: 4px; }
 .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 12px 0 4px; }
 .fact { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
 .fact .label { color: var(--sub); font-size: 0.85rem; }
@@ -145,9 +166,19 @@
 .folded > :not(h3):not(.oneline):not(.foldbar) { display: none; }
 .folded { padding-bottom: 10px; }
 
-/* ───────── 1장 디자인 (docs/design.md): 리서치 리포트 + 대시보드. .p1 안에만 적용 ───────── */
+/* ───────── 리포트 디자인 (docs/design.md): 리서치 리포트 + 대시보드. .p1 안에만 적용 (2026-11-03부터 본문 전체) ───────── */
 .p1 { background: var(--card); border: 1px solid var(--line); padding: 28px 36px 12px; margin-bottom: 24px; counter-reset: sec;
-  --serif: 'Noto Serif KR', 'Nanum Myeongjo', AppleMyungjo, Batang, serif; --tint: #f3f4f6; }
+  --serif: 'Noto Serif KR', 'Nanum Myeongjo', AppleMyungjo, Batang, serif; --tint: #f3f5f8;
+  --topic: #536f9e; --topic-soft: #edf2f8; }
+.p1[data-tab='business'] { --topic: #2f7774; --topic-soft: #eaf4f2; }
+.p1[data-tab='industry'] { --topic: #496f99; --topic-soft: #eef3f8; }
+.p1[data-tab='earnings'] { --topic: #7359a5; --topic-soft: #f2eef9; }
+.p1[data-tab='position'] { --topic: #2f7686; --topic-soft: #eaf4f5; }
+.p1[data-tab='cashflow'] { --topic: #397368; --topic-soft: #eaf4f1; }
+.p1[data-tab='value'] { --topic: #765d9d; --topic-soft: #f2eff8; }
+.p1[data-tab='news'] { --topic: #936529; --topic-soft: #faf3e8; }
+.p1[data-tab='outlook'] { --topic: #8c6271; --topic-soft: #f7eef2; }
+.p1[data-tab='sources'] { --topic: #5f6b7b; --topic-soft: #f0f2f5; }
 
 /* 헤더: 상자 없이 아래 굵은 선 */
 .p1 .card.header { background: none; border: 0; border-radius: 0; border-bottom: 3px solid var(--text); padding: 0 0 14px; margin: 0 0 20px; }
@@ -156,8 +187,8 @@
 
 /* 섹션: 상자 대신 가는 구분선, 번호 붙은 제목 */
 .p1 .card { background: none; border: 0; border-radius: 0; border-top: 1px solid var(--line); padding: 22px 0 14px; margin: 0; }
-.p1 .card h3 { font-size: 1.12rem; font-weight: 700; margin-bottom: 8px; }
-.p1 .card:not([data-section='core_cards']) > h3::before { counter-increment: sec; content: '1.' counter(sec); margin-right: 10px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.p1 .card h3 { font-size: 1.12rem; font-weight: 700; margin-bottom: 8px; color: var(--topic); }
+/* 2026-11-03: "1.1" 같은 장 번호는 쓰지 않는다 (거시→미시 묶음 제목으로 대신) */
 
 /* 핵심 지표: 대시보드 카드 (번호 없음, 옅은 배경, 테두리 없음) */
 .p1 [data-section='core_cards'] { border-top: 0; padding-top: 0; }
@@ -167,8 +198,9 @@
 .p1 .metriccard .big { font-size: 1.75rem; letter-spacing: -0.01em; }
 
 /* 한 줄 요약·종합 평가: 명조 + 왼쪽 세로선, AI 표시는 아래 작은 회색 글씨 */
+/* 2026-11-03: 명조(맥의 AppleMyungjo)는 글자 사이가 벌어져 보여 본문 고딕으로 바꿈 */
 .p1 .oneline, .p1 .verdict { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px;
-  font-family: var(--serif); font-size: 1rem; font-weight: 500; line-height: 1.6; color: var(--text);
+  font-size: 1rem; font-weight: 500; line-height: 1.7; color: var(--text); letter-spacing: -0.005em;
   border-left: 3px solid var(--text); padding: 2px 0 2px 14px; margin: 6px 0 14px; }
 .p1 .oneline > span, .p1 .verdict > span { order: 1; } /* 문장 뒤로: 작은 회색 표시 */
 .p1 .verdict { font-size: 1.08rem; font-weight: 600; }
@@ -197,3 +229,144 @@
 
 /* ⓘ 설명 패널: 보라 배경 대신 회색 */
 .p1 .infopanel { background: var(--tint); border: 0; border-radius: 4px; }
+
+/* 본문 안 묶음 제목 (경제 환경·산업·회사…) */
+.p1 .pagebreak { margin: 36px 0 4px; color: var(--text); font-size: 0.95rem; letter-spacing: 0.02em; }
+.p1 .appendixbar { margin-bottom: 4px; }
+
+/* ───────── 취업 준비생 질문 구성 (2026-11-03, report/jobseeker.tsx) ───────── */
+.part { margin: 14px 0 6px; }
+.parttitle { font-weight: 700; font-size: 0.95rem; margin-bottom: 4px; }
+.parttext { margin: 2px 0 6px; line-height: 1.7; }
+.subpart { margin: 6px 0 10px; }
+.quotes { list-style: none; margin: 4px 0 8px; padding: 0; }
+.quotes li { margin: 4px 0; padding-left: 12px; border-left: 2px solid var(--line); font-size: 0.88rem; line-height: 1.6; }
+.quotetext { color: #4a5563; }
+.cite { font-size: 0.78rem; color: var(--sub); white-space: nowrap; }
+.interests { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px 24px; margin: 8px 0; }
+.interest { border-top: 2px solid var(--text); padding-top: 8px; }
+.checklist { list-style: none; margin: 8px 0; padding: 0; }
+.checklist li { display: grid; grid-template-columns: 76px 150px 1fr; gap: 10px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid #eceef1; }
+.checkstatus { font-size: 0.8rem; font-weight: 700; }
+.checklabel { font-weight: 600; }
+.checkreason { font-size: 0.92rem; line-height: 1.6; }
+.risklist { margin: 4px 0; padding-left: 18px; }
+.risklist li { margin: 8px 0; line-height: 1.6; }
+@media (max-width: 640px) { .checklist li { grid-template-columns: 70px 1fr; } .checkreason { grid-column: 1 / -1; } }
+.newsgroup { margin: 14px 0 4px; }
+
+/* 뉴스: 주제별 카드 + 헤드라인만 (2026-11-04) */
+.newsgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 28px; margin: 10px 0 6px; }
+@media (max-width: 760px) { .newsgrid { grid-template-columns: 1fr; } }
+.newscard { border-top: 2px solid var(--text); padding-top: 8px; min-width: 0; }
+.newstopic { font-weight: 700; font-size: 0.92rem; margin-bottom: 2px; }
+.headlines { list-style: none; margin: 0; padding: 0; }
+.headlines li { display: flex; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px solid #eceef1; min-width: 0; }
+.headlines li:last-child { border-bottom: 0; }
+.headlines a { flex: 1; min-width: 0; color: var(--text); text-decoration: none; font-size: 0.92rem; line-height: 1.45;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.headlines a:hover { color: var(--accent); text-decoration: underline; }
+.headlines a b { font-weight: 600; }
+.newsmeta { flex: none; color: var(--sub); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+
+/* ───────── 리포트 탭 (2026-11-04) ───────── */
+.tabs { position: sticky; top: 0; z-index: 5; display: flex; gap: 2px; overflow-x: auto; background: var(--card);
+  border-bottom: 1px solid var(--line); margin: 4px -36px 8px; padding: 0 36px; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { flex: none; border: 0; background: none; padding: 12px 14px 10px; font-size: 0.95rem; color: var(--sub); cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tab:hover { color: var(--text); }
+.tabon { color: var(--topic); background: var(--topic-soft); font-weight: 700; border-bottom-color: var(--topic); border-radius: 6px 6px 0 0; }
+.tabend { margin-left: auto; font-size: 0.85rem; }
+
+/* 한눈에: 한 줄로 보기 */
+.glance { list-style: none; margin: 6px 0 0; padding: 0; }
+.glancerow { display: grid; grid-template-columns: 96px 1fr auto; gap: 14px; align-items: baseline; padding: 11px 0; border-bottom: 1px solid #eceef1; }
+.glancerow:last-child { border-bottom: 0; }
+.glancelabel { font-weight: 700; font-size: 0.88rem; color: var(--topic); }
+.glancetext { line-height: 1.65; }
+@media (max-width: 640px) { .glancerow { grid-template-columns: 1fr auto; } .glancelabel { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .dupontFactors { grid-template-columns: 1fr; } }
+
+/* 주제 제목과 키워드는 탭별 포인트 색으로 구분하고, 본문은 기본 글자색을 유지한다. */
+.p1 .parttitle, .p1 .tabletitle, .p1 .tiletitle, .p1 .newstopic, .p1 .boxtitle { color: var(--topic); }
+
+/* 한눈에 대시보드 (2026-11-04) */
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 4px 0 8px; }
+@media (max-width: 760px) { .tiles { grid-template-columns: 1fr; } }
+.tile { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px 8px; min-width: 0; background: var(--card); }
+.tile .chartbox { height: 220px; }
+.tilehead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.tiletitle { font-weight: 700; font-size: 0.95rem; }
+.chiplist { list-style: none; margin: 8px 0 4px; padding: 0; display: grid; gap: 8px; }
+.chiplist li { display: flex; align-items: center; gap: 10px; }
+.chip { flex: none; width: 70px; text-align: center; font-size: 0.78rem; font-weight: 700; border-radius: 999px; padding: 3px 0; }
+.chipwarn { background: #fdf0d8; color: #9a6110; }
+.chipgood { background: #e2f3e8; color: #1b6b37; }
+.chipinfo { background: #eef1f5; color: var(--sub); }
+.chiplabel { font-size: 0.92rem; }
+
+/* 사업 구조 탭 (2026-11-04) */
+.bizpart { margin: 14px 0; padding: 14px 16px; border: 1px solid var(--line); border-left: 3px solid var(--topic); border-radius: 8px; background: var(--card); }
+.bizpart .parttitle { margin-bottom: 10px; font-size: 1rem; line-height: 1.45; }
+.bizpart .parttitle .sub { display: block; margin-top: 3px; font-weight: 400; }
+.bizpart .parttext { margin: 8px 0 12px; font-size: 0.98rem; line-height: 1.75; }
+.businessEvidence { margin-top: 12px; padding-top: 9px; border-top: 1px solid var(--line); }
+.businessEvidence summary { color: var(--sub); cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+.businessEvidence .quotes { margin-top: 10px; }
+@media (max-width: 640px) { .bizpart { padding: 12px; } }
+
+/* 산업·경쟁 탭: 경쟁사 비교 (2026-11-04) */
+.peerlist { list-style: none; margin: 6px 0 4px; padding: 0; display: grid; gap: 4px; }
+.peergrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 10px 0 6px; }
+@media (max-width: 760px) { .peergrid { grid-template-columns: 1fr; } }
+.peerbox { border-radius: 8px; padding: 10px 12px; border-top: 3px solid var(--line); background: #fafbfc; }
+.peergood { border-top-color: var(--good); }
+.peerbad { border-top-color: var(--warn); }
+.peerinfo { border-top-color: var(--accent); }
+
+/* 2026-11-04 업계 위치: 시장점유율 막대 (이 회사 몫 vs 그 밖의 회사) */
+.sharerow { margin: 12px 0 16px; }
+.sharehead { margin-bottom: 6px; }
+.sharevalue { font-size: 1.25em; font-weight: 700; color: #2457c5; margin-left: 6px; }
+.sharebar { display: flex; height: 28px; border-radius: 6px; overflow: hidden; background: #e9edf3; font-size: 12px; }
+.sharemine { background: #2457c5; color: #fff; display: flex; align-items: center; padding: 0 8px; white-space: nowrap; overflow: hidden; }
+.sharerest { flex: 1; display: flex; align-items: center; justify-content: flex-end; padding: 0 8px; color: #5b6472; white-space: nowrap; }
+.sharehist { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 12px; color: #5b6472; }
+.overviewtext p { margin: 0 0 8px; line-height: 1.7; }
+
+/* 2026-11-04 손익계산서 분석 */
+.incstrong td { font-weight: 700; background: #f7f9fc; }
+.incsub { padding-left: 22px !important; color: #4a5361; }
+.incsub2 { padding-left: 40px !important; color: #6b7280; font-size: 0.92em; }
+.bridge { list-style: none; padding: 0; margin: 8px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.bridge li { border: 1px solid #e3e8ef; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.bridge li span { font-size: 13px; color: #4a5361; }
+.bridge li > span:nth-child(2) { font-size: 1.2em; font-weight: 700; color: inherit; }
+.bridge li small { color: #8a93a0; font-size: 11px; }
+.whyblock { margin: 14px 0; padding: 12px 14px; border-left: 3px solid #2457c5; background: #fafbfd; border-radius: 0 8px 8px 0; }
+.whyblock > b { display: block; margin-bottom: 4px; }
+.whyblock p { margin: 4px 0 8px; line-height: 1.7; }
+.cashWhyblock { border: 0; border-top: 1px solid var(--line); border-radius: 0; background: none; padding: 12px 0 4px; }
+.cashWhyblock > b { color: var(--topic, var(--accent)); }
+.cashFact { margin: 6px 0; line-height: 1.7; }
+.cashFact p { margin: 5px 0; }
+.cashFact p:first-child { padding: 8px 10px; background: var(--topic-soft, #f3f5f8); border-radius: 4px; }
+
+/* 2026-11-05 비율 해석(explain_profit_ratios/explain_stability_ratios): 차트 아래 짧은 해설 */
+.ratioExplain { margin: 6px 0 16px; line-height: 1.7; font-size: 0.92rem; color: var(--text); }
+.newsbox { margin: 6px 0 10px; padding: 8px 12px; background: #fff8ec; border: 1px solid #f3e0bd; border-radius: 8px; }
+.newsbox ul { margin: 6px 0 0; padding-left: 18px; }
+.newsbox li { margin: 3px 0; line-height: 1.6; }
+.newslabel { font-weight: 700; font-size: 13px; color: #8a5a00; }
+
+/* 2026-11-04 현금흐름 분석: 현금 다리 막대 */
+.cashbridge td:last-child { width: 40%; }
+.barin, .barout { display: inline-block; height: 12px; border-radius: 3px; vertical-align: middle; }
+.barin { background: #2e9e62; }
+.barout { background: #d9534f; }
+.cashDetail { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 8px; }
+.cashDetail > b { font-size: 0.88rem; }
+.cashDetail ul { list-style: none; margin: 4px 0; padding: 0; }
+.cashDetail li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px 16px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.cashCheck { margin: 8px 0; padding: 8px 10px; border-radius: 4px; background: #edf5f0; color: #295b40; font-size: 0.84rem; line-height: 1.6; }

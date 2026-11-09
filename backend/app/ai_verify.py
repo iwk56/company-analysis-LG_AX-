@@ -54,6 +54,23 @@ def numbers_in(text: str) -> set[str]:
     return {m.group().replace(",", "").rstrip(".") for m in _NUMBER.finditer(text)}
 
 
+# 기간 표시는 '자료에 없는 숫자'로 보지 않는다 (2026-11-04: "2026년 반기" 같은 문장이 버려지던 문제)
+# 연도(1990~2099 뒤에 년·.월·-월), 월(1~12 뒤에 월), 분기(1~4 뒤에 분기)만. 금액·비율은 그대로 확인한다
+_PERIOD = re.compile(
+    r"(?<![\d.,])(?:"
+    r"(?:19[9]\d|20\d\d)\.(?:0[1-9]|1[0-2])(?!\d)"  # 2026.01 (연.월)
+    r"|(?:19[9]\d|20\d\d)(?=\s*년|-\d{1,2}(?!\d))"  # 2026년, 2026-06
+    r"|(?:1[0-2]|0?[1-9])(?=\s*월|\s*~\s*(?:1[0-2]|0?[1-9])\s*월)"  # 6월, 1~6월의 1
+    r"|[1-4](?=\s*분기)"  # 3분기
+    r"|(?<=월)(?:3[01]|[12]\d|0?[1-9])(?=\s*일)|(?<=월 )(?:3[01]|[12]\d|0?[1-9])(?=\s*일)"  # 12월 31일의 31
+    r")|(?<=\d{4}\.\d{2}~)(?:0[1-9]|1[0-2])(?!\d)"  # 2026.01~06의 06
+)
+
+
+def period_numbers(text: str) -> set[str]:
+    return {m.group() for m in _PERIOD.finditer(text)}
+
+
 def unknown_numbers(text: str, allowed: set[str]) -> set[str]:
-    """text에 있는데 allowed에 없는 숫자."""
-    return numbers_in(text) - allowed
+    """text에 있는데 allowed에 없는 숫자 (연도·월·분기 같은 기간 표시는 뺀다)."""
+    return numbers_in(text) - allowed - period_numbers(text)

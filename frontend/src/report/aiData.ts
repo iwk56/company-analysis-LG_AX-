@@ -5,6 +5,7 @@ import type { Enrichment, Enrichments, ReportDetail } from '../api'
 export interface AiState {
   report: ReportDetail
   e: Enrichments
+  aiRetryable: string[]
   running: boolean
   error: string | null
   rerun: () => void
